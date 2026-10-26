@@ -161,6 +161,67 @@ export function createBot() {
         "Stop was not confirmed. The conversation may still be running; refresh and retry.",
       );
     },
+    history: (
+      paseo: PaseoApi,
+      input: { limit: number; cursor?: { updatedAt: string; id: string } },
+    ) =>
+      serial(async () => {
+        const state = await read();
+        const entries = [];
+        for (const record of Object.values(state.requests)) {
+          const found = await paseo.agents.ref(record.id).refresh();
+          const agent = found?.agent;
+          if (
+            !agent ||
+            agent.archivedAt ||
+            agent.workspaceId !== record.workspaceId ||
+            agent.labels["paseo-bot"] !== state.installationId
+          )
+            continue;
+          entries.push({
+            ...record,
+            title: agent.title ?? "Untitled conversation",
+            updatedAt: agent.updatedAt,
+            status: agent.pendingPermissions.length
+              ? "waiting for confirmation"
+              : agent.activeTurn
+                ? "running"
+                : agent.status,
+            archivedAt: agent.archivedAt ?? null,
+          });
+        }
+        entries.sort(
+          (a, b) =>
+            b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id),
+        );
+        const cursor = input.cursor;
+        const remaining = cursor
+          ? entries.filter(
+              (entry) =>
+                entry.updatedAt < cursor.updatedAt ||
+                (entry.updatedAt === cursor.updatedAt && entry.id < cursor.id),
+            )
+          : entries;
+        const page = remaining.slice(0, input.limit);
+        const last = page.at(-1);
+        return {
+          entries: page,
+          nextCursor:
+            remaining.length > page.length && last
+              ? { updatedAt: last.updatedAt, id: last.id }
+              : null,
+        };
+      }),
+    rename: async (paseo: PaseoApi, input: { id: string; title: string }) => {
+      await owned(paseo, input.id);
+      await executeCli(["agent", "update", input.id, "--name", input.title]);
+      const updated = await owned(paseo, input.id);
+      if (updated.title !== input.title)
+        throw new Error(
+          "Rename could not be confirmed; refresh history before retrying.",
+        );
+      return { id: input.id, title: updated.title };
+    },
     bootstrap: () =>
       serial(async () => {
         const state = await read();
