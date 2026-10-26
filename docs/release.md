@@ -8,8 +8,8 @@ Public Git **v0.1.0 is released**: [GitHub release](https://github.com/hulkzzhou
 | Final Standards / Spec | 0 findings each at the immutable revision |
 | Public fixed Git tag/release | Published, v0.1.0 |
 | Fresh remote exact-SHA installation | Passed; Git HEAD and public installation revision match |
-| Official registry submission | [#1246 submitted](https://github.com/getpaseo/plugins/issues/1246), with `submission` label and immutable source |
-| Registry review / deployed listing | Intake/review pending; not listed |
+| Official registry submission | [#1246 opened](https://github.com/getpaseo/plugins/issues/1246) with immutable source; required label is missing |
+| Registry review / deployed listing | Intake blocked by label permissions; no review PR, not listed |
 
 ## Exact remote artifact acceptance
 
@@ -34,3 +34,7 @@ An initial author command using `URL#SHA` directly as the stable CLI remote fail
 Latest stable remained 0.13.2 at publication. Full tests passed 27/27, with typecheck/lint/format checks; final independent reviews returned 0 findings on both axes. Desktop and compact browser behavior is accepted. Native iOS/Android durable drafts/preferences are unsupported, and native/Electron runtime acceptance is untested. Other Providers are untested. The public external-actor send race and offline host-unmount limit remain disclosed in [OVERVIEW](../OVERVIEW.md).
 
 The official submission template, REVIEW, BOTS, PROTOCOL and Source parser were re-read at registry revision `4fd2379bab088979a65de1a566a2c1c8138a560a`, 2026-10-26 22:13 UTC, and were unchanged from the prior verified policy. Submission, review, merge and actual deployed listing remain separate states. Only the deployed registry detail/index and visible directory establish listing.
+
+## External intake blocker
+
+Although author creation requested `--label submission`, the actual issue has no labels. Explicit `gh issue edit 1246 --repo getpaseo/plugins --add-label submission` failed: GraphQL reports that `hulkzzhou1` lacks permission for `AddLabelsToLabelable`. The [Submission workflow run](https://github.com/getpaseo/plugins/actions/runs/40411453925) skipped its job; the current workflow requires this label for issue events. No review PR exists. The server browser is signed out of GitHub, so an authenticated official-form submission is not currently available. A maintainer label request is being posted to the single existing application; alternatively the user can authenticate the official form. No duplicate application or upstream privilege/configuration change is attempted. This is an external intake blocker, not pending successful review or listing.
