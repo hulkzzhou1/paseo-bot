@@ -1,8 +1,2 @@
 node_modules/
-dist/
-coverage/
-.scratch/
-*.log
-.env
-.env.*
-!.env.example
+artifacts/
