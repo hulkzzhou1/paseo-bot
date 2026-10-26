@@ -16,3 +16,11 @@ The client uses documented parent label fields directly because the plugin clien
 | `npm run format:check` | 0 | Formatting matches |
 
 Root owns actual Codex management/delegation/notification browser acceptance on a separate isolated daemon, desktop/compact screenshots, independent Standards/Spec reviews, exact-SHA Git installation and registry submission. These remain pending for this first implementation checkpoint. Native iOS/Android and Electron are untested. Release publication, registry submission, review and actual listing are separate states; this checkpoint is not publication.
+
+## Git release preparation
+
+The manifest targets exactly 0.13.2 and uses `npm ci --omit=dev --ignore-scripts`. Only the standalone Node recovery helper's client/server imports require direct production dependencies; host-supplied plugin/protocol/schema declarations are development dependencies. The lock was updated with `npm install --package-lock-only --ignore-scripts --no-audit --no-fund` (exit 0), without replacing the shared development environment.
+
+English `OVERVIEW.md` discloses management setup (`daemon.mcp.injectIntoAgents` defaults false), normal tool permissions, shared files, Provider data flow, browser state, offline host-unmount behavior and native/Electron limits. Original source has an MIT license. Third-party notices reproduce upstream Paseo **v0.13.2** Apache-2.0 attribution and Zod's MIT text. Package media currently references already committed actual #3 desktop/mobile screenshots; root will add actual #7 images before freezing the release.
+
+`npm test` passes **24/24** (exit 0), including all prior executable slices and the two new management cases. Typecheck, lint, format, `git diff --check` and `node --check server/recovery-probe.mjs` all exit 0. `npm pack --dry-run --json --ignore-scripts` exits 0 and includes both entries, every imported local module, the ordinary ESM helper, overview, license/notices and screenshots. This is an inventory check only: the release source is Git, whose committed `package-lock.json` is required; no npm publication or shrinkwrap workflow is introduced. A separate assert-based self-check confirms referenced media/entries exist, all lock package entries have exact versions/resolved URLs/integrity and the overview contains no forbidden installation commands (exit 0).

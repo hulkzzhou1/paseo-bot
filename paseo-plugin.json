@@ -2,6 +2,12 @@
   "id": "paseo-bot",
   "name": "Paseo Bot",
   "description": "A host-local management assistant with independent conversations.",
-  "requirements": { "paseo": "0.13.2" },
-  "build": [["npm", "ci", "--ignore-scripts"]]
+  "requirements": {
+    "paseo": "0.13.2"
+  },
+  "build": [["npm", "ci", "--omit=dev", "--ignore-scripts"]],
+  "media": [
+    "docs/verification/images/issue-3-permission-desktop.png",
+    "docs/verification/images/issue-3-question-mobile.png"
+  ]
 }
