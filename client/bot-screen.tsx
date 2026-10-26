@@ -26,6 +26,7 @@ import {
   configuration,
   createConversation,
 } from "../shared/contracts.ts";
+import { observeConversation } from "./observation.ts";
 import { readDeviceValue, writeDeviceValue } from "./web.ts";
 import type { z } from "zod";
 
@@ -55,6 +56,10 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [observationAttempt, setObservationAttempt] = useState(0);
+  const [observationError, setObservationError] = useState<string | null>(null);
+  const messageScroll = useRef<ScrollView>(null);
+  const followMessages = useRef(true);
   const request = useRef<string | null>(null);
   const busy = useRef(false);
   const currentHost = useRef(host.id);
@@ -111,55 +116,25 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
       active = false;
     };
   }, [paseo, open, host.id]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: explicit retry replaces a released SDK observation.
   useEffect(() => {
     setItems([]);
     setAgent(null);
+    setObservationError(null);
+    followMessages.current = true;
     if (!selected) return;
-    let active = true;
-    const handle = paseo.agents.ref(selected);
-    let reading = false,
-      again = false;
-    async function refresh() {
-      if (reading) {
-        again = true;
-        return;
-      }
-      reading = true;
-      try {
-        const page = await handle.timeline.refetch({ limit: 200 });
-        if (page.error) throw new Error(page.error);
-        if (active) {
-          setItems(
-            page.entries.map((entry) => ({
-              seq: entry.seqStart,
-              item: entry.item,
-            })),
-          );
-          setAgent(handle.current());
-        }
-      } catch (reason) {
-        if (active) setError(String(reason));
-      } finally {
-        reading = false;
-        if (again && active) {
-          again = false;
-          void refresh();
-        }
-      }
-    }
-    const unsubscribe = handle.timeline.subscribe(() => void refresh());
-    const updates = handle.subscribe(() => {
-      if (active) setAgent(handle.current());
+    return observeConversation(paseo.agents.ref(selected), {
+      timeline: (page) =>
+        setItems(
+          page.entries.map((entry) => ({
+            seq: entry.seqStart,
+            item: entry.item,
+          })),
+        ),
+      agent: setAgent,
+      error: (reason) => setObservationError(String(reason)),
     });
-    void unsubscribe.ready.then(refresh).catch((reason) => {
-      if (active) setError(String(reason));
-    });
-    return () => {
-      active = false;
-      unsubscribe();
-      updates();
-    };
-  }, [paseo, selected]);
+  }, [paseo, selected, observationAttempt]);
   function button(title: string, onPress: () => void, disabled = false) {
     return (
       <Pressable
@@ -283,7 +258,8 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
   }
   const provider = catalog.find((entry) => entry.provider === config.provider);
   const model = provider?.models?.find((entry) => entry.id === config.model);
-  const unavailable = selected !== null && agent === null;
+  const unavailable =
+    selected !== null && (agent === null || observationError !== null);
   const running =
     agent?.status === "running" ||
     agent?.status === "initializing" ||
@@ -399,7 +375,37 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
           {error}
         </Text>
       )}
+      {observationError && (
+        <View style={{ gap: 8, paddingVertical: 8 }}>
+          <Text
+            accessibilityRole="alert"
+            style={{ color: theme.colors.statusDanger }}
+          >
+            Live updates stopped. {observationError}
+          </Text>
+          {button("Retry live updates", () =>
+            setObservationAttempt((attempt) => attempt + 1),
+          )}
+        </View>
+      )}
       <ScrollView
+        ref={messageScroll}
+        testID="bot-messages"
+        scrollEventThrottle={16}
+        onScroll={({ nativeEvent }) => {
+          followMessages.current =
+            nativeEvent.contentOffset.y +
+              nativeEvent.layoutMeasurement.height >=
+            nativeEvent.contentSize.height - 64;
+        }}
+        onContentSizeChange={() => {
+          if (followMessages.current)
+            messageScroll.current?.scrollToEnd({ animated: false });
+        }}
+        onLayout={() => {
+          if (followMessages.current)
+            messageScroll.current?.scrollToEnd({ animated: false });
+        }}
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingTop: layout.compact ? 16 : 32,
@@ -474,7 +480,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
           )}
         </View>
       </ScrollView>
-      {unavailable && (
+      {unavailable && !observationError && (
         <Text style={{ ...muted, fontSize: 13, paddingBottom: 8 }}>
           Loading conversation…
         </Text>
