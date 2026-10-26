@@ -11,9 +11,18 @@ import {
   rebuildWorkspace,
 } from "./shared/lifecycle.ts";
 import { createBot } from "./server/bot.ts";
+import { createDelivery } from "./server/delivery.ts";
+import { submitDelivery, reconcileDelivery } from "./shared/delivery.ts";
 import { stopConversation, respondConversation } from "./shared/execution.ts";
 export default function contribute(server: PluginServerContext) {
   const bot = createBot();
+  const delivery = createDelivery(bot);
+  server.handle(submitDelivery, (input, { paseo }) =>
+    delivery.submit(paseo, input),
+  );
+  server.handle(reconcileDelivery, ({ requestId }, { paseo }) =>
+    delivery.reconcile(paseo, requestId),
+  );
   const unhook = server.on("workspace.archived", ({ workspace }) =>
     bot.workspaceArchived(workspace.id, workspace.archivedAt),
   );

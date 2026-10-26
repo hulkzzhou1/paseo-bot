@@ -1,3 +1,4 @@
+import { userError } from "../shared/user-error.ts";
 import { useState } from "react";
 import { buildQuestionAnswers } from "./question-answers.ts";
 import {
@@ -50,7 +51,7 @@ export function StopControl({
       await stop({ agentId });
       onStopped();
     } catch (reason) {
-      setError(String(reason));
+      setError(userError(reason));
     } finally {
       setPending(false);
     }
@@ -340,7 +341,7 @@ export function RequestCard({
           : {}),
       });
     } catch (reason) {
-      setError(String(reason));
+      setError(userError(reason));
       setPending(false);
     }
   }

@@ -10,17 +10,21 @@ import {
 } from "react-native";
 import {
   usePaseo,
+  useHosts,
   useRpc,
   type PluginScreenProps,
 } from "@getpaseo/plugin/client";
 import { Icon, Modal } from "@getpaseo/plugin/client/ui";
 import type { PaseoAgent, PaseoProviderSnapshotResult } from "@getpaseo/client";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
+import { bootstrap, configuration } from "../shared/contracts.ts";
 import {
-  bootstrap,
-  configuration,
-  createConversation,
-} from "../shared/contracts.ts";
+  submitDelivery,
+  reconcileDelivery,
+  type pendingDelivery,
+  type deliveryOutcome,
+} from "../shared/delivery.ts";
+import { userError } from "../shared/user-error.ts";
 import { createDeviceState } from "./device-state.ts";
 import { WorkspaceLifecycle } from "./workspace-lifecycle.tsx";
 import { HistoryMenu } from "./history.tsx";
@@ -29,6 +33,8 @@ import { observeConversation } from "./observation.ts";
 import { readDeviceValue, writeDeviceValue } from "./web.ts";
 import type { z } from "zod";
 
+type PendingDelivery = z.infer<typeof pendingDelivery>;
+type Outcome = z.infer<typeof deliveryOutcome>;
 type Configuration = z.infer<typeof configuration>;
 type Conversation = {
   id: string;
@@ -39,7 +45,12 @@ type Conversation = {
 export function BotScreen({ theme, layout, host }: PluginScreenProps) {
   const paseo = usePaseo();
   const open = useRpc(bootstrap);
-  const create = useRpc(createConversation);
+  const submit = useRpc(submitDelivery);
+  const reconcile = useRpc(reconcileDelivery);
+  const hosts = useHosts();
+  const online = hosts.some(
+    (entry) => entry.serverId === host.id && entry.status === "online",
+  );
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [workspaceAccess, setWorkspaceAccess] = useState<{
@@ -81,11 +92,21 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [initializedHost, setInitializedHost] = useState<string | null>(null);
+  const [initializationAttempt, setInitializationAttempt] = useState(0);
   const [observationAttempt, setObservationAttempt] = useState(0);
   const [observationError, setObservationError] = useState<string | null>(null);
   const messageScroll = useRef<ScrollView>(null);
   const followMessages = useRef(true);
-  const request = useRef<string | null>(null);
+  const lifetime = useRef(0);
+  const navigation = useRef(0);
+  const [observationLoading, setObservationLoading] = useState(false);
+  const [deliveryView, setDeliveryView] = useState<{
+    host: string;
+    slot: string | null;
+    record: PendingDelivery | null;
+    result: Outcome;
+    blocked?: boolean;
+  } | null>(null);
   const busy = useRef(false);
   const currentHost = useRef(host.id);
   currentHost.current = host.id;
@@ -102,15 +123,47 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
   }, []);
   const persistenceError = useCallback((reason: unknown) => {
     setError(
-      `Device storage could not be saved. Keep this page open to retain edits. ${String(reason)}`,
+      `Device storage could not be saved. Keep this page open to retain edits. ${userError(reason)}`,
     );
   }, []);
+  const loadDelivery = useCallback(
+    (slot: string | null) => {
+      setDeliveryView(null);
+      try {
+        const saved = device.current?.delivery(slot);
+        if (saved) {
+          setDeliveryView({
+            host: host.id,
+            slot,
+            record: saved,
+            result: {
+              state: "unknown",
+              message:
+                "A previous message needs delivery verification. Check delivery before sending again.",
+            },
+          });
+        }
+      } catch (reason) {
+        setDeliveryView({
+          host: host.id,
+          slot,
+          record: null,
+          result: {
+            state: "unknown",
+            message: `Saved delivery state could not be read. Restore device storage and reopen this page. ${userError(reason)}`,
+          },
+        });
+      }
+    },
+    [host.id],
+  );
   function selectConversation(id: string | null) {
+    loadDelivery(id);
     selectedRef.current = id;
     setSelected(id);
     setHistory(false);
     setError(null);
-    request.current = null;
+    navigation.current++;
     try {
       setDraft(device.current?.draft(id).text ?? "");
     } catch (reason) {
@@ -133,10 +186,13 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
   }
   const muted = { color: theme.colors.foregroundMuted };
   const normal = { color: theme.colors.foreground };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: explicit retry repeats bootstrap and restores saved device state.
   useEffect(() => {
     let active = true;
+    const visit = ++lifetime.current;
+    setDeliveryView(null);
     busy.current = false;
-    request.current = null;
+    navigation.current++;
     setPending(false);
     setDraft("");
     setConfig({});
@@ -201,19 +257,28 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
         } catch {
           setError("Device preferences could not be read.");
         }
+        loadDelivery(selectedRef.current);
         setInitializedHost(host.id);
         setLoading(false);
       })
       .catch((reason) => {
         if (active) {
-          setError(String(reason));
+          setError(userError(reason));
           setLoading(false);
         }
       });
     return () => {
       active = false;
+      if (lifetime.current === visit) lifetime.current++;
     };
-  }, [paseo, open, host.id, persistenceError]);
+  }, [
+    paseo,
+    open,
+    host.id,
+    persistenceError,
+    loadDelivery,
+    initializationAttempt,
+  ]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: explicit retry replaces a released SDK observation.
   useEffect(() => {
     setItems([]);
@@ -230,7 +295,8 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
           })),
         ),
       agent: setAgent,
-      error: (reason) => setObservationError(String(reason)),
+      error: (reason) => setObservationError(userError(reason)),
+      loading: setObservationLoading,
     });
   }, [paseo, selected, observationAttempt]);
   function button(title: string, onPress: () => void, disabled = false) {
@@ -300,15 +366,168 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
       </Pressable>
     );
   }
+  function deliveryContext() {
+    const sentDevice = device.current;
+    const visit = lifetime.current;
+    const sentHost = host.id;
+    const selection = navigation.current;
+    return {
+      sentDevice,
+      sentHost,
+      selection,
+      isCurrent: () =>
+        currentHost.current === sentHost &&
+        lifetime.current === visit &&
+        device.current === sentDevice,
+    };
+  }
+  function finishDelivery(
+    record: PendingDelivery,
+    result: Outcome,
+    context: ReturnType<typeof deliveryContext>,
+  ) {
+    if (!context.isCurrent() || !context.sentDevice) return;
+    const store = context.sentDevice;
+    if (selectedRef.current === record.slot)
+      setDeliveryView({
+        host: context.sentHost,
+        slot: record.slot,
+        record,
+        result,
+      });
+    if (result.state !== "accepted" && result.state !== "failed") return;
+    try {
+      let promoted: { conversation: Conversation; draft: string } | null = null;
+      if (result.state === "accepted") {
+        const conversation = result.conversation;
+        if (conversation)
+          setConversations((previous) => [
+            ...previous.filter((entry) => entry.id !== conversation.id),
+            conversation,
+          ]);
+        if (
+          conversation &&
+          record.slot === null &&
+          selectedRef.current === null &&
+          navigation.current === context.selection
+        ) {
+          promoted = {
+            conversation,
+            draft: store.created(conversation.id, record),
+          };
+        } else {
+          const remaining = store.accepted(record.slot, record);
+          if (selectedRef.current === record.slot) setDraft(remaining);
+        }
+      }
+      store.setDelivery(record.slot, null);
+      if (promoted) {
+        const { conversation, draft } = promoted;
+        setDraft(draft);
+        selectedRef.current = conversation.id;
+        setSelected(conversation.id);
+        try {
+          store.select(conversation.id);
+          writeDeviceValue(
+            `${context.sentHost}:configuration`,
+            conversation.config,
+          );
+        } catch (reason) {
+          persistenceError(reason);
+        }
+      }
+    } catch (reason) {
+      persistenceError(reason);
+      if (selectedRef.current === record.slot)
+        setDeliveryView({
+          host: context.sentHost,
+          slot: record.slot,
+          record,
+          result: {
+            ...result,
+            message:
+              "Delivery was checked, but local cleanup could not be saved. Restore device storage and check delivery again.",
+          },
+          blocked: true,
+        });
+    }
+  }
+  async function checkDelivery(record: PendingDelivery) {
+    const context = deliveryContext();
+    setPending(true);
+    busy.current = true;
+    try {
+      finishDelivery(
+        record,
+        await reconcile({ requestId: record.input.requestId }),
+        context,
+      );
+    } catch (reason) {
+      if (context.isCurrent() && selectedRef.current === record.slot)
+        setDeliveryView({
+          host: host.id,
+          slot: record.slot,
+          record,
+          result: {
+            state: "unknown",
+            message: `Delivery is unknown. ${userError(reason)}`,
+          },
+        });
+    } finally {
+      if (context.isCurrent()) {
+        setPending(false);
+        busy.current = false;
+      }
+    }
+  }
+  async function dispatch(record: PendingDelivery) {
+    const context = deliveryContext();
+    if (!context.sentDevice) return;
+    busy.current = true;
+    setPending(true);
+    setStopped(null);
+    setError(null);
+    setDeliveryView({
+      host: host.id,
+      slot: record.slot,
+      record,
+      result: {
+        state: "unknown",
+        message: "Sending. Keep your draft until delivery is confirmed.",
+      },
+    });
+    try {
+      context.sentDevice.setDelivery(record.slot, record);
+      finishDelivery(record, await submit(record.input), context);
+    } catch (reason) {
+      if (context.isCurrent() && selectedRef.current === record.slot)
+        setDeliveryView({
+          host: host.id,
+          slot: record.slot,
+          record,
+          result: {
+            state: "unknown",
+            message: `Delivery is unknown. ${userError(reason)} Check delivery before trying again.`,
+          },
+        });
+    } finally {
+      if (context.isCurrent()) {
+        busy.current = false;
+        setPending(false);
+      }
+    }
+  }
   async function send() {
     if (
       !composerReady ||
+      !online ||
       readOnly ||
       !workspaceWritable ||
       busy.current ||
       running ||
       waiting ||
       unavailable ||
+      unresolved ||
       !draft.trim()
     )
       return;
@@ -317,84 +536,36 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
       setError("Choose provider, model and permission mode before sending.");
       return;
     }
-    busy.current = true;
-    setPending(true);
-    setStopped(null);
-    setError(null);
-    const submitted = draft;
-    const sentSlot = selected;
-    const sentDevice = device.current;
-    const sentHost = host.id;
-    const isCurrentVisit = () =>
-      currentHost.current === sentHost && device.current === sentDevice;
-    try {
-      const submittedDraft = sentDevice?.draft(sentSlot);
-      if (selected) {
-        await paseo.agents.ref(selected).send(submitted);
-      } else {
-        request.current ??= "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
-          /[xy]/g,
-          (character) => {
-            const random = Math.floor(Math.random() * 16);
-            return (character === "x" ? random : (random & 3) | 8).toString(16);
-          },
-        );
-        const conversation = await create({
-          requestId: request.current,
-          text: submitted,
-          config: parsed.data as Configuration,
-        });
-        if (!isCurrentVisit()) return;
-        setConversations((previous) => [
-          ...previous.filter((entry) => entry.id !== conversation.id),
-          conversation,
-        ]);
-        if (selectedRef.current === sentSlot) {
-          if (sentDevice && submittedDraft) {
-            try {
-              setDraft(sentDevice.created(conversation.id, submittedDraft));
-            } catch (reason) {
-              persistenceError(reason);
-            }
-          }
-          selectedRef.current = conversation.id;
-          setSelected(conversation.id);
-          try {
-            sentDevice?.select(conversation.id);
-          } catch (reason) {
-            persistenceError(reason);
-          }
-        }
-        request.current = null;
-        try {
-          writeDeviceValue(`${host.id}:configuration`, conversation.config);
-        } catch {
-          setError(
-            "Message accepted, but device preferences could not be saved.",
-          );
-        }
-      }
-      if (isCurrentVisit() && sentDevice && submittedDraft) {
-        try {
-          const remaining = sentDevice.accepted(sentSlot, submittedDraft);
-          if (selectedRef.current === sentSlot) setDraft(remaining);
-        } catch (reason) {
-          persistenceError(reason);
-        }
-      }
-    } catch (reason) {
-      if (isCurrentVisit()) setError(String(reason));
-    } finally {
-      if (isCurrentVisit()) {
-        busy.current = false;
-        setPending(false);
-      }
-    }
+    if (!device.current) return;
+    const submitted = device.current.draft(selected);
+    const requestId = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
+      /[xy]/g,
+      (character) => {
+        const random = Math.floor(Math.random() * 16);
+        return (character === "x" ? random : (random & 3) | 8).toString(16);
+      },
+    );
+    await dispatch({
+      slot: selected,
+      ...submitted,
+      input: {
+        requestId,
+        text: draft,
+        ...(selected
+          ? { agentId: selected }
+          : { config: parsed.data as Configuration }),
+      },
+    });
   }
+
   const provider = catalog.find((entry) => entry.provider === config.provider);
   const model = provider?.models?.find((entry) => entry.id === config.model);
   const unavailable =
-    selected !== null && (agent === null || observationError !== null);
+    selected !== null &&
+    (agent === null ||
+      observationError !== null ||
+      observationLoading ||
+      !online);
   const running =
     agent?.status === "running" ||
     agent?.status === "initializing" ||
@@ -417,6 +588,17 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
   );
   const composerReady =
     !loading && initializedHost === host.id && device.current !== null;
+  const currentDelivery =
+    deliveryView?.host === host.id && deliveryView.slot === selected
+      ? deliveryView
+      : null;
+  const unresolved = Boolean(
+    currentDelivery &&
+      (currentDelivery.blocked ||
+        currentDelivery.result.state === "unknown" ||
+        currentDelivery.result.state === "ready"),
+  );
+
   const readOnly = Boolean(
     agent?.archivedAt ||
       conversations.find((entry) => entry.id === selected)?.archivedAt,
@@ -427,6 +609,8 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
     readOnly ||
     !workspaceWritable ||
     !composerReady ||
+    !online ||
+    unresolved ||
     pending ||
     running ||
     waiting ||
@@ -524,6 +708,67 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
           {error}
         </Text>
       )}
+      {!loading &&
+        initializedHost !== host.id &&
+        button(
+          "Retry Bot initialization",
+          () => setInitializationAttempt((value) => value + 1),
+          !online,
+        )}
+      {!online && (
+        <Text
+          accessibilityRole="alert"
+          style={{ color: theme.colors.statusWarning, paddingVertical: 8 }}
+        >
+          This host is offline. Your draft is kept here; reconnect before
+          sending.
+        </Text>
+      )}
+      {currentDelivery && (
+        <View style={{ gap: 8, paddingVertical: 8 }}>
+          <Text
+            accessibilityRole="alert"
+            style={{
+              color:
+                currentDelivery.result.state === "failed"
+                  ? theme.colors.statusDanger
+                  : theme.colors.foregroundMuted,
+            }}
+          >
+            {currentDelivery.result.message ??
+              (currentDelivery.result.state === "accepted"
+                ? "Message delivered."
+                : "Delivery is unknown. Check before trying again.")}
+          </Text>
+          {unresolved && currentDelivery.record && (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {button(
+                pending ? "Checking delivery…" : "Check delivery",
+                () => {
+                  if (currentDelivery.record)
+                    void checkDelivery(currentDelivery.record);
+                },
+                pending || !online,
+              )}
+              {currentDelivery.result.state === "ready" &&
+                button(
+                  "Retry original message",
+                  () => {
+                    if (currentDelivery.record)
+                      void dispatch(currentDelivery.record);
+                  },
+                  pending ||
+                    !online ||
+                    readOnly ||
+                    !workspaceWritable ||
+                    running ||
+                    waiting ||
+                    unavailable,
+                )}
+            </View>
+          )}
+        </View>
+      )}
       {observationError && (
         <View style={{ gap: 8, paddingVertical: 8 }}>
           <Text
@@ -604,7 +849,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
                 agentId={selected}
                 theme={theme}
                 layout={layout}
-                disabled={unavailable || !workspaceWritable}
+                disabled={unavailable || !online || !workspaceWritable}
               />
             ))}
         </View>
@@ -757,7 +1002,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
               key={`${host.id}:${selected}`}
               agentId={selected}
               theme={theme}
-              disabled={unavailable}
+              disabled={unavailable || !online || !workspaceWritable}
               onStopped={() => setStopped({ host: host.id, agentId: selected })}
             />
           ) : (

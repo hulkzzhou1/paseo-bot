@@ -1,3 +1,4 @@
+import { userError } from "../shared/user-error.ts";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useRpc, type PluginScreenProps } from "@getpaseo/plugin/client";
@@ -41,7 +42,7 @@ export function WorkspaceLifecycle({
         if (active && version === epoch.current) {
           setStatus(null);
           setError(
-            `Workspace status is unknown. Check the connection and retry. ${String(reason)}`,
+            `Workspace status is unknown. Check the connection and retry. ${userError(reason)}`,
           );
           onChange(false);
         }
@@ -79,7 +80,7 @@ export function WorkspaceLifecycle({
         );
       }
     } catch (reason) {
-      if (mounted.current) setError(String(reason));
+      if (mounted.current) setError(userError(reason));
     } finally {
       if (mounted.current) setPending(false);
     }

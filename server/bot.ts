@@ -129,6 +129,8 @@ export function createBot() {
   }
   return {
     owned,
+    findRequest: (id: string) =>
+      serial(async () => (await read()).requests[id] ?? null),
     workspaceArchived: (id: string, at: string | null) =>
       serial(async () => {
         if (!at) return;

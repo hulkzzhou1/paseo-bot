@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { createDeviceState } from "../client/device-state.ts";
+import { randomUUID } from "node:crypto";
 
 test("drafts and last selection persist per browser, host, installation and slot; accepted sends clear only the submitted revision", () => {
   const values = new Map<string, unknown>();
@@ -38,6 +39,37 @@ test("drafts and last selection persist per browser, host, installation and slot
   );
   assert.equal(otherBrowser.draft(null).text, "");
   assert.equal(otherBrowser.selection(), null);
+});
+
+test("an unresolved delivery keeps its exact identity and submitted draft revision across page recreation", () => {
+  const values = new Map<string, unknown>();
+  const storage = {
+    read: (key: string) => values.get(key),
+    write: (key: string, value: unknown) => {
+      values.set(key, value);
+    },
+  };
+  const device = createDeviceState(storage, "host", "install");
+  device.edit(null, "original task");
+  const pending = {
+    slot: null,
+    input: {
+      requestId: randomUUID(),
+      text: "original task",
+      config: { provider: "bot-test", model: "test-model", modeId: "approve" },
+    },
+    ...device.draft(null),
+  };
+  device.setDelivery(null, pending);
+  device.edit(null, "newer edits");
+  const reopened = createDeviceState(storage, "host", "install");
+  assert.deepEqual(reopened.delivery(null), pending);
+  assert.equal(reopened.accepted(null, pending), "newer edits");
+  reopened.setDelivery(null, null);
+  assert.equal(
+    createDeviceState(storage, "host", "install").delivery(null),
+    null,
+  );
 });
 
 test("storage failure is reported while edited drafts remain usable in memory", () => {
@@ -104,5 +136,26 @@ test("a late acknowledgement from an earlier host visit cannot erase a newer sto
   assert.equal(
     createDeviceState(storage, "host-a", "install").draft("one").text,
     "newer text after returning to host-a",
+  );
+});
+
+test("checking an accepted creation twice cannot overwrite edits already promoted to its conversation", () => {
+  const values = new Map<string, unknown>();
+  const storage = {
+    read: (key: string) => values.get(key),
+    write: (key: string, value: unknown) => {
+      values.set(key, value);
+    },
+  };
+  const device = createDeviceState(storage, "host", "install");
+  device.edit(null, "sent");
+  const submitted = device.draft(null);
+  device.edit(null, "followup");
+  device.created("created", submitted);
+  device.edit("created", "newer followup");
+  assert.equal(device.created("created", submitted), "newer followup");
+  assert.equal(
+    createDeviceState(storage, "host", "install").draft("created").text,
+    "newer followup",
   );
 });

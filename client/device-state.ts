@@ -1,3 +1,5 @@
+import { pendingDelivery } from "../shared/delivery.ts";
+import type { z } from "zod";
 type Draft = { text: string; revision: number };
 export function createDeviceState(
   storage: {
@@ -9,6 +11,10 @@ export function createDeviceState(
 ) {
   const prefix = JSON.stringify([host, installation]);
   const drafts = new Map<string | null, Draft>();
+  const deliveries = new Map<
+    string | null,
+    z.infer<typeof pendingDelivery> | null
+  >();
   function key(slot: string | null) {
     return `${prefix}:draft:${JSON.stringify(slot)}`;
   }
@@ -50,7 +56,29 @@ export function createDeviceState(
   return {
     draft,
     edit,
+    delivery(slot: string | null) {
+      if (deliveries.has(slot)) return deliveries.get(slot) ?? null;
+      const stored = storage.read(`${prefix}:delivery:${JSON.stringify(slot)}`);
+      const value =
+        stored === null || stored === undefined
+          ? null
+          : pendingDelivery.parse(stored);
+      deliveries.set(slot, value);
+      return value;
+    },
+    setDelivery(
+      slot: string | null,
+      value: z.infer<typeof pendingDelivery> | null,
+    ) {
+      storage.write(`${prefix}:delivery:${JSON.stringify(slot)}`, value);
+      deliveries.set(slot, value);
+    },
     created(id: string, submitted: Draft) {
+      const promoted = latest(id);
+      if (promoted.revision > 0) {
+        storage.write(key(id), promoted);
+        return promoted.text;
+      }
       const current = latest(null);
       const remaining =
         current.revision === submitted.revision &&

@@ -17,6 +17,7 @@ export const provider: ProviderRegistration = {
   status: async () => ({ available: true }),
   async connect() {
     const listeners = new Set<(event: ProviderEvent) => void>();
+    const counts = new Map<string, number>();
     const turns = new Map<string, { id: string; scenario: string }>();
     const history = new Map<string, ProviderTimelineItem[]>();
     function persist(sessionId: string) {
@@ -113,6 +114,8 @@ export const provider: ProviderRegistration = {
         }
         if (input.type === "session.prompt") {
           const turnId = input.prompt.clientMessageId;
+          const count = (counts.get(input.sessionId) ?? 0) + 1;
+          counts.set(input.sessionId, count);
           emit({
             type: "session.prompt_result",
             sessionId: input.sessionId,
@@ -140,6 +143,21 @@ export const provider: ProviderRegistration = {
           });
           persist(input.sessionId);
           turns.set(input.sessionId, { id: turnId, scenario: text });
+          if (text.startsWith("history-pages"))
+            for (let index = 0; index < 220; index++)
+              emit({
+                type: "timeline.item",
+                sessionId: input.sessionId,
+                item: {
+                  id: `${turnId}:history:${index}`,
+                  type: "tool_call",
+                  callId: `${turnId}:history:${index}`,
+                  name: "fixture",
+                  status: "completed",
+                  error: null,
+                  detail: { type: "plain_text", text: `History row ${index}` },
+                },
+              });
           if (text.startsWith("execution")) {
             for (const status of ["running", "completed"] as const)
               emit({
@@ -219,7 +237,7 @@ export const provider: ProviderRegistration = {
               item: {
                 id: `${turnId}:reply`,
                 type: "assistant_message",
-                text: "## Hello\n\nStreaming **complete**.",
+                text: `## Hello\n\nStreaming **complete**. Execution count: ${count}`,
               },
             });
             emit({

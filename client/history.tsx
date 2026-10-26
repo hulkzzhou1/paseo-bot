@@ -1,3 +1,4 @@
+import { userError } from "../shared/user-error.ts";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useRpc, type PluginScreenProps } from "@getpaseo/plugin/client";
@@ -77,7 +78,7 @@ export function HistoryMenu({
           setError(null);
         }
       } catch (reason) {
-        if (active) setError(String(reason));
+        if (active) setError(userError(reason));
       } finally {
         fetching = false;
         if (active) setLoading(false);
@@ -118,7 +119,7 @@ export function HistoryMenu({
       setEditing(null);
       setReload((value) => value + 1);
     } catch (reason) {
-      setRenameError(String(reason));
+      setRenameError(userError(reason));
     } finally {
       setSaving(false);
     }
@@ -312,7 +313,7 @@ export function HistoryMenu({
                   setReload((value) => value + 1);
                 })
                 .catch((reason) => {
-                  if (alive.current) setArchiveError(String(reason));
+                  if (alive.current) setArchiveError(userError(reason));
                 })
                 .finally(() => {
                   if (alive.current) setArchiving(false);
