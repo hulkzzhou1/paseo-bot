@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { PaseoApi } from "@getpaseo/client";
 import { z } from "zod";
+import { renameOwned } from "./rename.ts";
 import { configuration } from "../shared/contracts.ts";
 
 const record = z.object({
@@ -56,7 +57,86 @@ export function createBot() {
     queue = result.catch(() => {});
     return result;
   }
+  async function owned(paseo: PaseoApi, id: string) {
+    const state = await read();
+    const record = Object.values(state.requests).find(
+      (entry) => entry.id === id,
+    );
+    if (!record) throw new Error("Not an owned Bot conversation");
+    const found = await paseo.agents.ref(id).refresh();
+    if (
+      !found ||
+      found.agent.workspaceId !== record.workspaceId ||
+      found.agent.labels["paseo-bot"] !== state.installationId
+    )
+      throw new Error("Owned Bot conversation is unavailable");
+    return found.agent;
+  }
   return {
+    history: (
+      paseo: PaseoApi,
+      input: { limit: number; cursor?: { updatedAt: string; id: string } },
+    ) =>
+      serial(async () => {
+        const state = await read();
+        const entries = [];
+        for (const record of Object.values(state.requests)) {
+          const found = await paseo.agents.ref(record.id).refresh();
+          const agent = found?.agent;
+          if (
+            !agent ||
+            agent.archivedAt ||
+            agent.workspaceId !== record.workspaceId ||
+            agent.labels["paseo-bot"] !== state.installationId
+          )
+            continue;
+          entries.push({
+            ...record,
+            title: agent.title ?? "Untitled conversation",
+            updatedAt: agent.updatedAt,
+            status: agent.pendingPermissions.length
+              ? "waiting for confirmation"
+              : agent.activeTurn
+                ? "running"
+                : agent.status,
+            archivedAt: agent.archivedAt ?? null,
+          });
+        }
+        entries.sort(
+          (a, b) =>
+            b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id),
+        );
+        const cursor = input.cursor;
+        const remaining = cursor
+          ? entries.filter(
+              (entry) =>
+                entry.updatedAt < cursor.updatedAt ||
+                (entry.updatedAt === cursor.updatedAt && entry.id < cursor.id),
+            )
+          : entries;
+        const page = remaining.slice(0, input.limit);
+        const last = page.at(-1);
+        return {
+          entries: page,
+          nextCursor:
+            remaining.length > page.length && last
+              ? { updatedAt: last.updatedAt, id: last.id }
+              : null,
+        };
+      }),
+    rename: (paseo: PaseoApi, input: { id: string; title: string }) =>
+      serial(async () => {
+        const agent = await owned(paseo, input.id);
+        if (agent.archivedAt)
+          throw new Error("Archived conversations are read-only");
+        await renameOwned(input.id, input.title);
+        const updated = await owned(paseo, input.id);
+        if (updated.title !== input.title)
+          throw new Error(
+            "Rename could not be confirmed; refresh history before retrying.",
+          );
+        return { id: input.id, title: updated.title };
+      }),
     bootstrap: () =>
       serial(async () => {
         const state = await read();

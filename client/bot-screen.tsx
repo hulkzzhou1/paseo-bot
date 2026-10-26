@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -26,6 +26,8 @@ import {
   configuration,
   createConversation,
 } from "../shared/contracts.ts";
+import { createDeviceState } from "./device-state.ts";
+import { HistoryMenu } from "./history.tsx";
 import { observeConversation } from "./observation.ts";
 import { readDeviceValue, writeDeviceValue } from "./web.ts";
 import type { z } from "zod";
@@ -64,7 +66,44 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
   const busy = useRef(false);
   const currentHost = useRef(host.id);
   currentHost.current = host.id;
+  const device = useRef<ReturnType<typeof createDeviceState> | null>(null);
+  const selectedRef = useRef<string | null>(null);
   const input = useRef<TextInput>(null);
+  const mergeHistory = useCallback((entries: Conversation[]) => {
+    setConversations((previous) => [
+      ...previous.filter(
+        (entry) => !entries.some((next) => next.id === entry.id),
+      ),
+      ...entries,
+    ]);
+  }, []);
+  const persistenceError = useCallback((reason: unknown) => {
+    setError(
+      `Device storage could not be saved. Keep this page open to retain edits. ${String(reason)}`,
+    );
+  }, []);
+  function selectConversation(id: string | null) {
+    selectedRef.current = id;
+    setSelected(id);
+    setHistory(false);
+    setError(null);
+    request.current = null;
+    try {
+      setDraft(device.current?.draft(id).text ?? "");
+      device.current?.select(id);
+    } catch (reason) {
+      setDraft("");
+      persistenceError(reason);
+    }
+  }
+  function editDraft(text: string) {
+    setDraft(text);
+    try {
+      device.current?.edit(selectedRef.current, text);
+    } catch (reason) {
+      persistenceError(reason);
+    }
+  }
   const muted = { color: theme.colors.foregroundMuted };
   const normal = { color: theme.colors.foreground };
   useEffect(() => {
@@ -79,6 +118,8 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
     setPicker(null);
     setHistory(false);
     setLoading(true);
+    selectedRef.current = null;
+    device.current = null;
     setSelected(null);
     setItems([]);
     setAgent(null);
@@ -91,10 +132,39 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
             await paseo.providers.waitForReady({ cwd: state.directory }),
           ] as const,
       )
-      .then(([state, providers]) => {
+      .then(async ([state, providers]) => {
         if (!active) return;
         setConversations(state.conversations);
         setCatalog(providers.entries);
+        device.current = createDeviceState(
+          { read: readDeviceValue, write: writeDeviceValue },
+          host.id,
+          state.installationId,
+        );
+        try {
+          const remembered = device.current.selection();
+          const owned = state.conversations.find(
+            (entry) => entry.id === remembered,
+          );
+          const found = owned
+            ? await paseo.agents.ref(owned.id).refresh()
+            : null;
+          if (!active) return;
+          const id =
+            found &&
+            !found.agent.archivedAt &&
+            found.agent.workspaceId === owned?.workspaceId &&
+            found.agent.labels["paseo-bot"] === state.installationId
+              ? remembered
+              : null;
+          selectedRef.current = id;
+          setSelected(id);
+          setDraft(device.current.draft(id).text);
+          device.current.select(id);
+        } catch (reason) {
+          if (active) persistenceError(reason);
+        }
+        if (!active) return;
         try {
           const stored = configuration.safeParse(
             readDeviceValue(`${host.id}:configuration`),
@@ -115,7 +185,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
     return () => {
       active = false;
     };
-  }, [paseo, open, host.id]);
+  }, [paseo, open, host.id, persistenceError]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: explicit retry replaces a released SDK observation.
   useEffect(() => {
     setItems([]);
@@ -213,8 +283,11 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
     setPending(true);
     setError(null);
     const submitted = draft;
+    const sentSlot = selected;
+    const sentDevice = device.current;
     const sentHost = host.id;
     try {
+      const submittedDraft = sentDevice?.draft(sentSlot);
       if (selected) {
         await paseo.agents.ref(selected).send(submitted);
       } else {
@@ -235,7 +308,22 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
           ...previous.filter((entry) => entry.id !== conversation.id),
           conversation,
         ]);
-        setSelected(conversation.id);
+        if (selectedRef.current === sentSlot) {
+          if (sentDevice && submittedDraft) {
+            try {
+              setDraft(sentDevice.created(conversation.id, submittedDraft));
+            } catch (reason) {
+              persistenceError(reason);
+            }
+          }
+          selectedRef.current = conversation.id;
+          setSelected(conversation.id);
+          try {
+            sentDevice?.select(conversation.id);
+          } catch (reason) {
+            persistenceError(reason);
+          }
+        }
         request.current = null;
         try {
           writeDeviceValue(`${host.id}:configuration`, conversation.config);
@@ -245,8 +333,14 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
           );
         }
       }
-      if (currentHost.current === sentHost)
-        setDraft((current) => (current === submitted ? "" : current));
+      if (currentHost.current === sentHost && sentDevice && submittedDraft) {
+        try {
+          const remaining = sentDevice.accepted(sentSlot, submittedDraft);
+          if (selectedRef.current === sentSlot) setDraft(remaining);
+        } catch (reason) {
+          persistenceError(reason);
+        }
+      }
     } catch (reason) {
       if (currentHost.current === sentHost) setError(String(reason));
     } finally {
@@ -308,13 +402,10 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="New conversation"
-          accessibilityState={{ disabled: pending }}
-          disabled={pending}
+          disabled={loading}
+          accessibilityState={{ disabled: loading }}
           onPress={() => {
-            setSelected(null);
-            setHistory(false);
-            setError(null);
-            request.current = null;
+            selectConversation(null);
             input.current?.focus();
           }}
           style={{
@@ -322,7 +413,6 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
             height: 44,
             alignItems: "center",
             justifyContent: "center",
-            opacity: pending ? 0.5 : 1,
           }}
         >
           <Icon name="Plus" size={18} color={theme.colors.foregroundMuted} />
@@ -330,6 +420,8 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="History"
+          disabled={loading}
+          accessibilityState={{ disabled: loading }}
           onPress={() => setHistory((value) => !value)}
           style={{
             width: 44,
@@ -348,19 +440,13 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
         </Text>
       )}
       {history && (
-        <ScrollView style={{ maxHeight: 180 }}>
-          {conversations.map((conversation) => (
-            <View key={conversation.id}>
-              {button(conversation.id, () => {
-                setSelected(conversation.id);
-                setHistory(false);
-              })}
-            </View>
-          ))}
-          {conversations.length === 0 && (
-            <Text style={muted}>No Bot conversations yet.</Text>
-          )}
-        </ScrollView>
+        <HistoryMenu
+          theme={theme}
+          compact={layout.compact}
+          onSelect={selectConversation}
+          onClose={() => setHistory(false)}
+          onEntries={mergeHistory}
+        />
       )}
       {loading && (
         <Text accessibilityRole="alert" style={muted}>
@@ -510,7 +596,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
           ref={input}
           accessibilityLabel="Message Paseo Bot"
           value={draft}
-          onChangeText={setDraft}
+          onChangeText={editDraft}
           multiline
           placeholder="Message Paseo Bot…"
           placeholderTextColor={theme.colors.foregroundMuted}

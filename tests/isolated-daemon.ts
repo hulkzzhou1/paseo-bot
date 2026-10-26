@@ -7,7 +7,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { RpcOutput } from "@getpaseo/plugin";
-import { bootstrap, createConversation } from "../shared/contracts.ts";
+import {
+  bootstrap,
+  createConversation,
+  listConversations,
+  renameConversation,
+} from "../shared/contracts.ts";
 import { createPaseoApi } from "@getpaseo/client";
 import { hashDaemonPassword } from "@getpaseo/server/auth";
 import { createHostClient } from "@getpaseo/client/node";
@@ -100,10 +105,24 @@ export async function createIsolatedDaemon(
     method: "create-conversation",
     input: unknown,
   ): Promise<RpcOutput<typeof createConversation>>;
+  function rpc(
+    method: "list-conversations",
+    input: unknown,
+  ): Promise<RpcOutput<typeof listConversations>>;
+  function rpc(
+    method: "rename-conversation",
+    input: unknown,
+  ): Promise<RpcOutput<typeof renameConversation>>;
   async function rpc(method: string, input: unknown): Promise<unknown> {
     const output = await driver.invokePluginRpc("paseo-bot", method, input);
     return (
-      method === "bootstrap" ? bootstrap : createConversation
+      method === "bootstrap"
+        ? bootstrap
+        : method === "list-conversations"
+          ? listConversations
+          : method === "rename-conversation"
+            ? renameConversation
+            : createConversation
     ).output.parse(output);
   }
   for (let attempt = 0; attempt < 100; attempt++) {

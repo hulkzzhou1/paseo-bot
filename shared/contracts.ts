@@ -31,3 +31,25 @@ export const createConversation = defineRpc({
   }),
   output: conversation,
 });
+export const historyConversation = conversation.extend({
+  title: z.string(),
+  status: z.string(),
+  updatedAt: z.string(),
+  archivedAt: z.string().nullable(),
+});
+export const listConversations = defineRpc({
+  name: "list-conversations",
+  input: z.object({
+    cursor: z.object({ updatedAt: z.string(), id: z.string() }).optional(),
+    limit: z.number().int().min(1).max(50).default(20),
+  }),
+  output: z.object({
+    entries: z.array(historyConversation),
+    nextCursor: z.object({ updatedAt: z.string(), id: z.string() }).nullable(),
+  }),
+});
+export const renameConversation = defineRpc({
+  name: "rename-conversation",
+  input: z.object({ id: z.uuid(), title: z.string().trim().min(1).max(200) }),
+  output: z.object({ id: z.string(), title: z.string() }),
+});
