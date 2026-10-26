@@ -1,5 +1,6 @@
 import type {
   ProviderEvent,
+  ProviderTimelineItem,
   ProviderRegistration,
 } from "@getpaseo/plugin/server/provider";
 const models = [
@@ -17,8 +18,31 @@ export const provider: ProviderRegistration = {
   async connect() {
     const listeners = new Set<(event: ProviderEvent) => void>();
     const turns = new Map<string, { id: string; scenario: string }>();
+    const history = new Map<string, ProviderTimelineItem[]>();
+    function persist(sessionId: string) {
+      for (const listener of listeners)
+        listener({
+          type: "session.persistence",
+          sessionId,
+          persistence: {
+            version: 1,
+            data: {
+              id: sessionId,
+              transcript: JSON.stringify(history.get(sessionId) ?? []),
+            },
+          },
+        });
+    }
     function emit(event: ProviderEvent) {
+      if (event.type === "timeline.item") {
+        const items = history.get(event.sessionId) ?? [];
+        const index = items.findIndex((item) => item.id === event.item.id);
+        if (index >= 0) items[index] = event.item;
+        else items.push(event.item);
+        history.set(event.sessionId, items);
+      }
       for (const listener of listeners) listener(event);
+      if (event.type === "timeline.item") persist(event.sessionId);
     }
     return {
       version: 1,
@@ -38,6 +62,15 @@ export const provider: ProviderRegistration = {
             catalog: { models, modes },
           });
         if (input.type === "session.open") {
+          const data = input.persistence?.data;
+          const restored: ProviderTimelineItem[] =
+            data &&
+            typeof data === "object" &&
+            !Array.isArray(data) &&
+            typeof data.transcript === "string"
+              ? JSON.parse(data.transcript)
+              : [];
+          history.set(input.sessionId, [...restored]);
           emit({
             type: "session.opened",
             sessionId: input.sessionId,
@@ -49,8 +82,17 @@ export const provider: ProviderRegistration = {
               "permission",
             ],
             restoration: "core",
-            persistence: { version: 1, data: { id: input.sessionId } },
+            persistence: {
+              version: 1,
+              data: {
+                id: input.sessionId,
+                transcript: JSON.stringify(restored),
+              },
+            },
           });
+          if (input.history === "replay")
+            for (const item of restored)
+              emit({ type: "timeline.item", sessionId: input.sessionId, item });
           emit({
             type: "session.config",
             sessionId: input.sessionId,
@@ -90,6 +132,13 @@ export const provider: ProviderRegistration = {
                   .map((part) => part.text)
                   .join("")
               : "";
+          history.get(input.sessionId)?.push({
+            id: `${turnId}:user`,
+            type: "user_message",
+            text,
+            clientMessageId: turnId,
+          });
+          persist(input.sessionId);
           turns.set(input.sessionId, { id: turnId, scenario: text });
           if (text.startsWith("execution")) {
             for (const status of ["running", "completed"] as const)

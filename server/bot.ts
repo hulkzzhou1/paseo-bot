@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { inspectArchivedWorkspace } from "./workspace-status.ts";
 import { executeCli } from "./cli.ts";
 import {
   questionsSchema,
@@ -23,6 +24,9 @@ const stateSchema = z.object({
   installationId: z.string(),
   workspaceId: z.string().nullable(),
   requests: z.record(z.string(), record),
+  oldWorkspaceIds: z.array(z.string()).default([]),
+  rebuilds: z.record(z.string(), z.string()).default({}),
+  archivedWorkspaces: z.record(z.string(), z.string()).default({}),
 });
 export function createBot() {
   const root = join(
@@ -48,6 +52,9 @@ export function createBot() {
         installationId: randomUUID(),
         workspaceId: null,
         requests: {},
+        oldWorkspaceIds: [],
+        rebuilds: {},
+        archivedWorkspaces: {},
       };
       await save(state);
       return state;
@@ -78,10 +85,113 @@ export function createBot() {
       throw new Error("Not an owned Bot conversation");
     if (mutable && result.agent.archivedAt)
       throw new Error("Archived conversations are read-only");
+    if (mutable) {
+      const workspace = await paseo.workspaces
+        .ref(record.workspaceId)
+        .refresh();
+      if (!workspace || workspace.archivingAt)
+        throw new Error(
+          "Bot workspace is archived or unavailable; its conversations are read-only.",
+        );
+    }
     return result.agent;
+  }
+  async function stop(paseo: PaseoApi, id: string) {
+    await owned(paseo, id);
+    await executeCli(["agent", "stop", id]);
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const agent = await owned(paseo, id);
+      if (
+        agent.status !== "running" &&
+        agent.status !== "initializing" &&
+        !agent.activeTurn &&
+        agent.pendingPermissions.length === 0
+      )
+        return { stopped: true as const };
+      await delay(100);
+    }
+    throw new Error(
+      "Stop was not confirmed. The conversation may still be running; refresh and retry.",
+    );
+  }
+  async function inspect(paseo: PaseoApi, state: z.infer<typeof stateSchema>) {
+    if (!state.workspaceId)
+      return { workspaceId: null, state: "none" as const };
+    const workspace = await paseo.workspaces.ref(state.workspaceId).refresh();
+    const status = workspace
+      ? workspace.archivingAt
+        ? ("archived" as const)
+        : ("ready" as const)
+      : state.archivedWorkspaces[state.workspaceId]
+        ? ("archived" as const)
+        : await inspectArchivedWorkspace(state.workspaceId);
+    return { workspaceId: state.workspaceId, state: status };
   }
   return {
     owned,
+    workspaceArchived: (id: string, at: string | null) =>
+      serial(async () => {
+        if (!at) return;
+        const state = await read();
+        if (
+          state.workspaceId !== id &&
+          !state.oldWorkspaceIds.includes(id) &&
+          !Object.values(state.requests).some(
+            (entry) => entry.workspaceId === id,
+          )
+        )
+          return;
+        state.archivedWorkspaces[id] = at;
+        await save(state);
+      }),
+    inspect: (paseo: PaseoApi) =>
+      serial(async () => inspect(paseo, await read())),
+    rebuild: (paseo: PaseoApi, expected: string) =>
+      serial(async () => {
+        const state = await read();
+        if (state.workspaceId !== expected) {
+          if (
+            state.oldWorkspaceIds.includes(expected) &&
+            state.workspaceId &&
+            (await inspect(paseo, state)).state === "ready"
+          )
+            return { workspaceId: state.workspaceId };
+          throw new Error(
+            "Workspace selection changed; refresh status before rebuilding.",
+          );
+        }
+        const status = await inspect(paseo, state);
+        if (status.state !== "archived" && status.state !== "unavailable")
+          throw new Error(
+            "The Bot workspace is active; rebuild was not attempted.",
+          );
+        let id = state.rebuilds[expected];
+        if (!id) {
+          id = `wks_${randomUUID().replaceAll("-", "").slice(0, 16)}`;
+          state.rebuilds[expected] = id;
+          await save(state);
+        }
+        const replacement = await paseo.workspaces.create({
+          workspaceId: id,
+          source: { kind: "directory", path: directory },
+          background: true,
+          idempotencyKey: `paseo-bot:${state.installationId}:rebuild:${expected}`,
+        });
+        if (replacement.id !== id || replacement.id === expected)
+          throw new Error(
+            "Daemon returned a different workspace generation; rebuild was not confirmed.",
+          );
+        const confirmed = await replacement.refresh();
+        if (!confirmed || confirmed.archivingAt)
+          throw new Error(
+            "Replacement workspace is not active; refresh status before retrying.",
+          );
+        if (!state.oldWorkspaceIds.includes(expected))
+          state.oldWorkspaceIds.push(expected);
+        state.workspaceId = id;
+        await save(state);
+        return { workspaceId: id };
+      }),
     async respond(
       paseo: PaseoApi,
       input: RpcInput<typeof respondConversation>,
@@ -143,27 +253,40 @@ export function createBot() {
       });
       return { accepted: true as const };
     },
-    async stop(paseo: PaseoApi, id: string) {
-      await owned(paseo, id);
-      await executeCli(["agent", "stop", id]);
-      for (let attempt = 0; attempt < 30; attempt++) {
-        const agent = await owned(paseo, id);
-        if (
-          agent.status !== "running" &&
-          agent.status !== "initializing" &&
-          !agent.activeTurn &&
-          agent.pendingPermissions.length === 0
-        )
-          return { stopped: true as const };
-        await delay(100);
-      }
-      throw new Error(
-        "Stop was not confirmed. The conversation may still be running; refresh and retry.",
-      );
+    stop,
+    async archive(paseo: PaseoApi, id: string) {
+      let agent = await owned(paseo, id, { mutable: false });
+      if (agent.archivedAt) return { id, archivedAt: agent.archivedAt };
+      if (
+        agent.status === "running" ||
+        agent.status === "initializing" ||
+        agent.activeTurn ||
+        agent.pendingPermissions.length
+      )
+        await stop(paseo, id);
+      agent = await owned(paseo, id);
+      if (
+        agent.status === "running" ||
+        agent.status === "initializing" ||
+        agent.activeTurn ||
+        agent.pendingPermissions.length
+      )
+        throw new Error("Conversation is still active; Stop before archiving.");
+      await paseo.agents.ref(id).archive();
+      const archived = await owned(paseo, id, { mutable: false });
+      if (!archived.archivedAt)
+        throw new Error(
+          "Archive was not confirmed; refresh history before retrying.",
+        );
+      return { id, archivedAt: archived.archivedAt };
     },
     history: (
       paseo: PaseoApi,
-      input: { limit: number; cursor?: { updatedAt: string; id: string } },
+      input: {
+        limit: number;
+        cursor?: { updatedAt: string; id: string };
+        archived?: boolean;
+      },
     ) =>
       serial(async () => {
         const state = await read();
@@ -173,7 +296,7 @@ export function createBot() {
           const agent = found?.agent;
           if (
             !agent ||
-            agent.archivedAt ||
+            Boolean(agent.archivedAt) !== Boolean(input.archived) ||
             agent.workspaceId !== record.workspaceId ||
             agent.labels["paseo-bot"] !== state.installationId
           )
