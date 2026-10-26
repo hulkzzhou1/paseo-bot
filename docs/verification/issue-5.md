@@ -1,6 +1,6 @@
 # Issue #5: archive and explicit workspace rebuild
 
-Base revision: `c6240c5`, branch `implement/issue-5`. Runtime target remains installed app/daemon/CLI/public SDK **0.13.2**. Independent Standards/Spec review and desktop/mobile actual browser acceptance are root-owned and remain pending this implementation record.
+Base revision: `c6240c5`, branch `implement/issue-5`. Runtime target remains installed app/daemon/CLI/public SDK **0.13.2**. Independent Standards/Spec reviews completed with 0 findings each. Root browser acceptance below runs the reviewed implementation `11fa78345491e2fb2fa88c26fb1a218ca7887a6f`, merged as `e4f47161fd2aa281f7f4a911aa96648faa9f82e1`.
 
 ## Behavior and public boundaries
 
@@ -24,3 +24,14 @@ Commands from the issue-5 worktree: `npm run typecheck`, `npm run lint`, `npm ru
 The browser acceptance daemon is independent of production and prior slice daemons; its generated password is kept outside the repository in a mode-600 context file. Root will append browser screenshots and actual desktop/compact archive/rebuild/failure/offline results. No production lifecycle/config/plugin operation, sibling checkout modification, ticket closure or publication is performed by this slice. Native/Electron remain untested; native persistence is explicitly unsupported under the accepted platform scope.
 
 Final implementation checks: `npm run typecheck` exit 0; `npm run lint` exit 0 (31 files); `npm run format:check` exit 0; `node --check server/recovery-probe.mjs` exit 0; `git diff --check` exit 0. `npm test` exit 0 with **16/16** tests, including all three real isolated lifecycle tests and the shipped ESM recovery path.
+
+## Root browser acceptance
+
+Installed Server Browser, app/daemon/CLI/SDK 0.13.2, independent generated home and port 46097; desktop 1120×800 and compact 390×844. Browser operations and public CLI commands exited 0.
+
+- Completed conversation archived via its History action; reload retained `ARCHIVE_KEEP_DRAFT`, restored durable Markdown reply and read-only composer/disabled Send. Running fixture conversation archived only after confirmed Stop; public inspect showed closed and archived. A fixture refusing Stop remained running and unarchived with a visible error.
+- External public `paseo workspace archive` on the exact owned background workspace produced the archived warning and blocked new messages. Public `workspace ls --background` returned no active workspace before manual Rebuild: no automatic resurrection.
+- Explicit Rebuild created exactly one new background generation (`wks_cbea291e860b4c13`) in the same ordinary Bot directory, replacing archived generation `wks_591e14e262db5c98`. A sentinel file retained its exact content. New conversation `NEW_GENERATION_CHECK` received the fixture reply in a new Agent. Reopening the old archived conversation after that retained its original reply and draft, read-only state and disabled Send.
+- Concurrent rebuild, missed archive hook durable inspection, missing resource classification and mutation rejection are covered by the 16/16 real isolated test suite described above. Browser inspection is actual app behavior; deterministic Provider fixture behavior is distinguished from the real Codex tool/permission/question evidence recorded for #3.
+
+Screenshots: [rebuild desktop](images/issue-5-rebuilt-desktop.png), [external archive compact](images/issue-5-workspace-archived-mobile.png), [old generation after rebuild](images/issue-5-old-generation-mobile.png), [refused Stop](images/issue-5-refused-archive.png). Native iOS/Android/Electron remain untested.
