@@ -1,6 +1,6 @@
 # Ticket #2 verification
 
-Implementation and strengthened-test revision: `6fa29b310000155ac46a9366d6fc3c0985ea340b` on `implement/issue-2`. Implementation source is unchanged from `72caadd9e73bd28eaca0dd2ee49239486f25990c`. The branch incorporates integration decisions 15 and 16 through `08dbd3a` (native devices not guaranteed; conversation UI follows native Paseo). This record covers the first slice, not tickets #3–#7 or community publication.
+Implementation and review-fix revision: `6739635980a250fea72af04eecc53996015caec6` on `implement/issue-2`. The native-style layout was introduced in `72caadd9e73bd28eaca0dd2ee49239486f25990c`; review fixes add explicit observation retry and native follow-scroll. The branch incorporates integration decisions 15 and 16 through `08dbd3a` (native devices not guaranteed; conversation UI follows native Paseo). This record covers the first slice, not tickets #3–#7 or community publication.
 
 ## Versions and isolated boundary
 
@@ -18,9 +18,9 @@ All commands below ran in the issue-2 worktree; no full Paseo monorepo test suit
 | --- | --- | --- |
 | `npm install --include=dev --ignore-scripts --no-audit --no-fund` | 0 | Local development dependencies installed and lockfile committed. This shell otherwise omits development dependencies. |
 | `npm run typecheck` | 0 | Strict TypeScript check with no DOM library; public runtime imports only. |
-| `npm run lint` | 0 | Biome checked all 15 executable/config source files. |
+| `npm run lint` | 0 | Biome checked all 17 executable/config source files. |
 | `npm run format:check` | 0 | Biome reported no formatting differences. |
-| `npm test` | 0 | 3 focused tests passed through actual isolated daemons, approximately 20 seconds. |
+| `npm test` | 0 | 3 focused tests passed through actual isolated daemons plus 2 focused public-SDK observation boundary tests, approximately 20 seconds. |
 | `npm run test:daemon` | 0 | Focused daemon entry point also passed. |
 | `git diff --check` | 0 | No whitespace errors. |
 | `paseo --version` | 0 | `0.13.2`. |
@@ -44,4 +44,11 @@ Final desktop, compact, dark-theme and post-update configuration/history evidenc
 
 Browser device preferences use the skill-supported, platform-gated `client/web.ts` adapter, with storage errors shown. The 0.13.2 global-screen SDK has no supported native device persistence API; native devices are not guaranteed under the user's explicit decision. Electron, iOS and Android were not tested. Browser mobile width does not constitute native testing.
 
-Stop, tool cards, permissions and Provider questions belong to #3; full paginated history, rename and drafts to #4; archive/rebuild to #5; delivery/reconnect recovery to #6; management, complete acceptance and publication to #7. [Compatibility evidence](../compatibility.md) distinguishes the available public paths from interactions still awaiting runtime validation. No tickets were closed and no release was published by this implementer. Overall independent Standards/Spec review is owned by the integration workflow.
+Stop, tool cards, permissions and Provider questions belong to #3; full paginated history, rename and drafts to #4; archive/rebuild to #5; delivery/reconnect recovery to #6; management, complete acceptance and publication to #7. [Compatibility evidence](../compatibility.md) distinguishes the available public paths from interactions still awaiting runtime validation. No tickets were closed and no release was published by this implementer. Independent Standards/Spec review is owned by the integration workflow; its first #2 pass raised two P2 findings, both addressed below.
+
+
+## Independent review fixes
+
+The Standards finding identified that SDK timeline errors release the subscription, while the old listener treated the error as another update and refetched once. The focused public-SDK boundary test reproduced the defect (exit 1, missing expected observation error). The extracted observation lifetime now makes failure visible, blocks sending while observation is unavailable, ignores queued/late work after failure or teardown, and exposes **Retry live updates** to establish a fresh observation. Focused tests for error/retry and late teardown responses pass (exit 0). The controllable event source is an external SDK boundary test, not a replacement for the real daemon/Provider acceptance chain.
+
+The Spec finding identified missing native follow-scroll. Root reproduced it with a real isolated Codex 60-line answer: message viewport `clientHeight=498`, `scrollHeight=1754`, `scrollTop=0`, bottom gap `1256`; `SCROLL_CHECK_END` was below the viewport. Screenshot: external artifact `issue-2-scroll-before-fix.png`. The message ScrollView now has testID `bot-messages`, starts selected history at the bottom, follows content/layout growth while within 64 pixels of the bottom, and preserves manual scrolling away. Root's final browser follow-scroll/reopen check is pending below.
