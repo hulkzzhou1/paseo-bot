@@ -82,6 +82,8 @@ export function createBot() {
   }
   return {
     owned,
+    findRequest: (id: string) =>
+      serial(async () => (await read()).requests[id] ?? null),
     async respond(
       paseo: PaseoApi,
       input: RpcInput<typeof respondConversation>,

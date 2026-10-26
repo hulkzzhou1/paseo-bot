@@ -7,7 +7,7 @@ export const configuration = z.object({
   modeId: z.string().min(1),
   thinkingOptionId: z.string().optional(),
 });
-const conversation = z.object({
+export const conversation = z.object({
   id: z.string(),
   workspaceId: z.string(),
   config: configuration,
