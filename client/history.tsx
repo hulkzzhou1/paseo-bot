@@ -1,5 +1,5 @@
 import { userError } from "../shared/user-error.ts";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useRpc, type PluginScreenProps } from "@getpaseo/plugin/client";
 import { Modal } from "@getpaseo/plugin/client/ui";
@@ -8,6 +8,7 @@ import {
   listConversations,
   renameConversation,
 } from "../shared/contracts.ts";
+import { archiveConversation } from "../shared/lifecycle.ts";
 import type { z } from "zod";
 type Entry = z.infer<typeof historyConversation>;
 export function HistoryMenu({
@@ -16,15 +17,30 @@ export function HistoryMenu({
   onSelect,
   onClose,
   onEntries,
+  onArchived,
 }: {
   theme: PluginScreenProps["theme"];
   compact: boolean;
   onSelect(id: string): void;
   onClose(): void;
   onEntries(entries: Entry[]): void;
+  onArchived(id: string, archivedAt: string): void;
 }) {
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const list = useRpc(listConversations);
   const rename = useRpc(renameConversation);
+  const archive = useRpc(archiveConversation);
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState<Entry | null>(null);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [archiveNotice, setArchiveNotice] = useState<string | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [pages, setPages] = useState(1);
   const [more, setMore] = useState(false);
@@ -46,7 +62,11 @@ export function HistoryMenu({
         const all: Entry[] = [];
         let cursor: { updatedAt: string; id: string } | undefined;
         for (let page = 0; page < pages; page++) {
-          const result = await list({ limit: 20, cursor });
+          const result = await list({
+            limit: 20,
+            cursor,
+            archived: showArchived,
+          });
           all.push(...result.entries);
           cursor = result.nextCursor ?? undefined;
           if (!cursor) break;
@@ -70,7 +90,7 @@ export function HistoryMenu({
       active = false;
       clearInterval(interval);
     };
-  }, [list, pages, reload, onEntries]);
+  }, [list, pages, reload, onEntries, showArchived]);
   function action(
     label: string,
     onPress: () => void,
@@ -116,6 +136,25 @@ export function HistoryMenu({
       >
         Bot history
       </Text>
+      {action(
+        showArchived
+          ? "Show active conversations"
+          : "Show archived conversations",
+        () => {
+          setShowArchived((value) => !value);
+          setPages(1);
+          setEntries([]);
+          setLoading(true);
+        },
+      )}
+      {archiveNotice && (
+        <Text
+          accessibilityRole="alert"
+          style={{ color: theme.colors.foregroundMuted, padding: 12 }}
+        >
+          {archiveNotice}
+        </Text>
+      )}
       {loading && (
         <Text style={{ color: theme.colors.foregroundMuted, padding: 12 }}>
           Loading history…
@@ -164,16 +203,28 @@ export function HistoryMenu({
                 {entry.status}
               </Text>
             </Pressable>
-            {action(
-              `Rename ${entry.title}`,
-              () => {
-                setRenameError(null);
-                setEditing(entry);
-                setTitle(entry.title);
-              },
-              false,
-              "Rename",
-            )}
+            {!entry.archivedAt &&
+              action(
+                `Rename ${entry.title}`,
+                () => {
+                  setRenameError(null);
+                  setEditing(entry);
+                  setTitle(entry.title);
+                },
+                false,
+                "Rename",
+              )}
+            {!entry.archivedAt &&
+              action(
+                `Archive ${entry.title}`,
+                () => {
+                  setConfirmArchive(entry);
+                  setArchiveError(null);
+                  setArchiveNotice(null);
+                },
+                false,
+                "Archive",
+              )}
           </View>
         ))}
         {!loading && !error && entries.length === 0 && (
@@ -224,6 +275,55 @@ export function HistoryMenu({
           {content}
         </View>
       )}
+      <Modal
+        open={confirmArchive !== null}
+        title="Archive conversation"
+        onOpenChange={(open) => {
+          if (!open && !archiving) setConfirmArchive(null);
+        }}
+      >
+        <Modal.Content contentContainerStyle={{ padding: 16, gap: 8 }}>
+          <Text style={{ color: theme.colors.foreground }}>
+            Archive {confirmArchive?.title}? Running conversations are stopped
+            and confirmed first. Archived history stays read-only; drafts and
+            shared files are retained.
+          </Text>
+          {archiveError && (
+            <Text
+              accessibilityRole="alert"
+              style={{ color: theme.colors.statusDanger }}
+            >
+              {archiveError}
+            </Text>
+          )}
+          {action(
+            archiving ? "Stopping and archiving…" : "Confirm archive",
+            () => {
+              if (!confirmArchive || archiving) return;
+              setArchiving(true);
+              setArchiveError(null);
+              void archive({ id: confirmArchive.id })
+                .then((result) => {
+                  if (!alive.current) return;
+                  onArchived(result.id, result.archivedAt);
+                  setConfirmArchive(null);
+                  setArchiveNotice(
+                    "Conversation archived. View it in archived conversations.",
+                  );
+                  setReload((value) => value + 1);
+                })
+                .catch((reason) => {
+                  if (alive.current) setArchiveError(userError(reason));
+                })
+                .finally(() => {
+                  if (alive.current) setArchiving(false);
+                });
+            },
+            archiving,
+          )}
+          {action("Cancel archive", () => setConfirmArchive(null), archiving)}
+        </Modal.Content>
+      </Modal>
       <Modal
         open={editing !== null}
         title="Rename conversation"
