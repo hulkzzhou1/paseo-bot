@@ -1,0 +1,17 @@
+{
+  "revision": "ffedf6a953ad25dae53f3f5903a2e5fcafb75b72",
+  "gitHead": "ffedf6a953ad25dae53f3f5903a2e5fcafb75b72",
+  "installationCurrentRevision": "ffedf6a953ad25dae53f3f5903a2e5fcafb75b72",
+  "pluginStatus": "running",
+  "source": "https://github.com/hulkzzhou1/paseo-bot#ffedf6a953ad25dae53f3f5903a2e5fcafb75b72",
+  "serverId": "srv_zD5qEzRIOyMi",
+  "agentId": "16bee85d-8f31-49ad-af31-ef737bd6a607",
+  "workspaceId": "wks_591779fc113e2793",
+  "userMessages": 1,
+  "assistantReply": "GIT_INSTALL_OK",
+  "toolCalls": 0,
+  "background": true,
+  "missedHookRecovery": "archived",
+  "unbundledHelperLoaded": true,
+  "daemonVersion": "0.13.2"
+}
