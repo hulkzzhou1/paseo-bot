@@ -1,6 +1,6 @@
 # Paseo Bot：单主机管理助手插件规格
 
-状态：已按确认需求完成实现及隔离 daemon、真实 Provider 和浏览器验收；发布验证进行中，远程固定 Git 修订安装、Git release 与社区目录申请/审核/上线尚未完成。公开仓库：hulkzzhou1/paseo-bot。最终目标是发布到 Paseo 社区；以各 ticket 的实际验证与发布记录为准。
+状态：完整插件已实现并完成浏览器、隔离 daemon 与真实 Provider 验收；Git v0.1.0 已发布。官方目录申请 getpaseo/plugins#1246 因 submission 标签权限阻塞，尚未进入审核或上架。完整要求和已确认的平台范围不变。
 
 ## Problem Statement
 
