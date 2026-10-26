@@ -8,8 +8,8 @@ Public Git **v0.1.0 is released**: [GitHub release](https://github.com/hulkzzhou
 | Final Standards / Spec | 0 findings each at the immutable revision |
 | Public fixed Git tag/release | Published, v0.1.0 |
 | Fresh remote exact-SHA installation | Passed; Git HEAD and public installation revision match |
-| Official registry submission | Not submitted yet |
-| Registry review / deployed listing | Not started / not listed |
+| Official registry submission | [#1246 submitted](https://github.com/getpaseo/plugins/issues/1246), with `submission` label and immutable source |
+| Registry review / deployed listing | Intake/review pending; not listed |
 
 ## Exact remote artifact acceptance
 

@@ -2,7 +2,7 @@
 
 A standalone Paseo plugin for a persistent host-local management assistant. Its global page provides independent conversations, native-style tool/permission/question interactions, Stop, history, local drafts, archive/rebuild, cautious delivery recovery and real delegated-target navigation.
 
-Release candidate for exactly Paseo **0.13.2**, with actual isolated Codex management/delegation and desktop/compact browser acceptance recorded. Final artifact review, exact remote revision installation, Git release, registry submission/review and directory listing remain separate pending milestones; no registry publication is claimed. See [OVERVIEW](OVERVIEW.md) for capabilities, setup, data flow and limitations, and [compatibility](docs/compatibility.md) for public API evidence.
+[Public Git v0.1.0](https://github.com/hulkzzhou1/paseo-bot/releases/tag/v0.1.0) targets exactly Paseo **0.13.2** and passed fresh remote exact-revision installation. [Official registry application #1246](https://github.com/getpaseo/plugins/issues/1246) is submitted and awaiting review; the plugin is **not listed yet**. See [release status](docs/release.md), [OVERVIEW](OVERVIEW.md) and [compatibility](docs/compatibility.md).
 
 - [Specification](docs/spec.md) / [GitHub specification #1](https://github.com/hulkzzhou1/paseo-bot/issues/1)
 - [Architecture decision](docs/adr/0001-bot-workspace.md) / [Glossary](docs/glossary.md)
