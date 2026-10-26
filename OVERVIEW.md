@@ -18,7 +18,7 @@ Device-local browser storage keeps each host's last selection, new-conversation 
 
 Rename conversations, archive them after execution is confirmed stopped, and read archived history. Archiving the Bot workspace requires an explicit manual rebuild before further Bot work. Rebuild creates a new workspace identity while preserving old history and shared files.
 
-Management stays on the current host and requires actual targets. The Bot is instructed to clarify ambiguous requests and create business work in a normal visible workspace, with ordinary parent/child completion notifications. Related Agents appear under Delegated work with public Agent/workspace navigation, validated against their real parent relationship. Delegated Agents do not appear in Bot History. These instructions do not replace Provider permissions or guarantee enforcement by every external tool transport.
+Management stays on the current host and requires actual targets. The Bot is instructed to clarify ambiguous requests and create business work in a normal visible workspace, with ordinary parent/child completion notifications. Related Agents appear under Delegated work with public Agent/workspace navigation, validated against their real parent relationship or a successful structured same-host Paseo send receipt. Existing recipients retain their original parent. Delegated Agents do not appear in Bot History. These instructions do not replace Provider permissions or guarantee enforcement by every external tool transport.
 
 ## Data and permissions
 

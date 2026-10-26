@@ -862,6 +862,7 @@ export function BotScreen({
             <DelegatedTargets
               key={`${host.id}:${selected}`}
               parentId={selected}
+              timeline={items.map(({ item }) => item)}
               hostId={host.id}
               theme={theme}
               navigation={hostNavigation}

@@ -1,110 +1,87 @@
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { usePaseo, type PluginScreenProps } from "@getpaseo/plugin/client";
-import type { PaseoAgent, PaseoAgentListResult } from "@getpaseo/client";
+import type { PaseoAgent } from "@getpaseo/client";
 import {
   listDelegations,
+  dispatchedTargets,
+  observeDelegations,
   validateDelegation,
   parentAgentLabel,
 } from "./delegations.ts";
+import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { userError } from "../shared/user-error.ts";
 export function DelegatedTargets({
   parentId,
   hostId,
   theme,
   navigation,
+  timeline,
 }: {
   parentId: string;
   hostId: string;
   theme: PluginScreenProps["theme"];
   navigation: PluginScreenProps["navigation"];
+  timeline: readonly AgentTimelineItem[];
 }) {
   const paseo = usePaseo();
   const [targets, setTargets] = useState<PaseoAgent[]>([]),
     [error, setError] = useState<string | null>(null),
+    [observationError, setObservationError] = useState<string | null>(null),
     [attempt, setAttempt] = useState(0),
     [opening, setOpening] = useState(false);
   const alive = useRef(true);
+  const dispatchedKey = dispatchedTargets(timeline, hostId).join(",");
+  const dispatched = dispatchedKey ? dispatchedKey.split(",") : [];
   // biome-ignore lint/correctness/useExhaustiveDependencies: explicit retry replaces a failed owned observation.
   useEffect(() => {
     alive.current = true;
-    let active = true,
-      reading = false,
-      again = false;
-    const lifetime = new AbortController();
-    let subscription: PaseoAgentListResult["subscription"];
-    let detach: (() => void) | undefined;
-    async function refresh() {
-      if (!active) return;
-      if (reading) {
-        again = true;
-        return;
-      }
-      reading = true;
-      try {
-        const next = await listDelegations(
-          paseo,
-          parentId,
-          hostId,
-          lifetime.signal,
-        );
-        if (active) {
-          setTargets(next);
-          setError(null);
-        }
-      } catch (reason) {
-        if (active) setError(userError(reason));
-      } finally {
-        reading = false;
-        if (active && again) {
-          again = false;
-          void refresh();
-        }
-      }
-    }
-    void paseo.agents
-      .list({
-        filter: {
-          labels: { [parentAgentLabel]: parentId },
-          includeArchived: true,
-          includeBackground: true,
+    const stop = observeDelegations(
+      {
+        async watch(signal) {
+          const result = await paseo.agents.list({
+            filter: {
+              labels: dispatchedKey
+                ? undefined
+                : { [parentAgentLabel]: parentId },
+              includeArchived: true,
+              includeBackground: true,
+            },
+            subscribe: {},
+            signal,
+          });
+          return result.subscription;
         },
-        subscribe: {},
-        signal: lifetime.signal,
-      })
-      .then(async (snapshot) => {
-        subscription = snapshot.subscription;
-        if (!active) {
-          await subscription.release();
-          return;
-        }
-        detach = subscription.subscribe({
-          snapshot: () => void refresh(),
-          update: () => void refresh(),
-          error: (reason) => {
-            if (active) setError(userError(reason));
-          },
-        });
-        await subscription.ready;
-        if (active) void refresh();
-      })
-      .catch((reason) => {
-        if (active) setError(userError(reason));
-      });
+        read: (signal) =>
+          listDelegations(paseo, parentId, hostId, signal, dispatched),
+      },
+      {
+        targets(next) {
+          setTargets(next);
+          setObservationError(null);
+        },
+        error(reason) {
+          setObservationError(userError(reason));
+        },
+      },
+    );
     return () => {
-      active = false;
       alive.current = false;
-      lifetime.abort();
-      detach?.();
-      void subscription?.release().catch(() => {});
+      stop();
     };
-  }, [paseo, parentId, hostId, attempt]);
+  }, [paseo, parentId, hostId, attempt, dispatchedKey]);
   async function open(id: string, workspace: boolean) {
     if (opening || !navigation) return;
     setOpening(true);
     setError(null);
     try {
-      const target = await validateDelegation(paseo, id, parentId, hostId);
+      const target = await validateDelegation(
+        paseo,
+        id,
+        parentId,
+        hostId,
+        dispatched,
+      );
       if (workspace) {
         if (!target.workspaceId)
           throw new Error("The delegated Agent has no workspace.");
@@ -128,7 +105,8 @@ export function DelegatedTargets({
       if (alive.current) setOpening(false);
     }
   }
-  if (!targets.length && !error) return null;
+  const visibleError = observationError ?? error;
+  if (!targets.length && !visibleError) return null;
   function action(label: string, onPress: () => void, disabled = false) {
     return (
       <Pressable
@@ -197,13 +175,13 @@ export function DelegatedTargets({
           Target navigation is unavailable in this Paseo client.
         </Text>
       )}
-      {error && (
+      {visibleError && (
         <>
           <Text
             accessibilityRole="alert"
             style={{ color: theme.colors.statusDanger }}
           >
-            {error}
+            {visibleError}
           </Text>
           {action(
             "Refresh delegated work",

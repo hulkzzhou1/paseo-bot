@@ -2,7 +2,11 @@ import { strict as assert } from "node:assert";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { createIsolatedDaemon } from "./isolated-daemon.ts";
-import { listDelegations, validateDelegation } from "../client/delegations.ts";
+import {
+  listDelegations,
+  validateDelegation,
+  dispatchedTargets,
+} from "../client/delegations.ts";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -108,6 +112,54 @@ test("delegation navigation uses real same-host parent relationships and exclude
     await assert.rejects(
       validateDelegation(daemon.client, randomUUID(), bot.id, hostId),
       /no longer a delegated target/,
+    );
+    const receipt = {
+      type: "tool_call" as const,
+      callId: "actual-contract",
+      name: "paseo.send_agent_prompt",
+      status: "completed" as const,
+      error: null,
+      detail: {
+        type: "unknown" as const,
+        input: { agentId: unrelated.id, notifyOnFinish: true },
+        output: {
+          structuredContent: {
+            success: true,
+            deliveryStatus: "queued",
+            serverId: hostId,
+          },
+        },
+      },
+    };
+    const dispatched = dispatchedTargets([receipt], hostId);
+    assert.deepEqual(dispatched, [unrelated.id]);
+    assert.deepEqual(
+      (
+        await listDelegations(
+          daemon.client,
+          bot.id,
+          hostId,
+          undefined,
+          dispatched,
+        )
+      ).map((agent) => agent.id),
+      [child.id, unrelated.id],
+    );
+    assert.equal(
+      (
+        await validateDelegation(
+          daemon.client,
+          unrelated.id,
+          bot.id,
+          hostId,
+          dispatched,
+        )
+      ).id,
+      unrelated.id,
+    );
+    assert.equal(
+      (await unrelated.refresh())?.agent.labels["paseo.parent-agent-id"],
+      undefined,
     );
     assert.equal((await daemon.rpc("bootstrap", {})).conversations.length, 1);
   } finally {
