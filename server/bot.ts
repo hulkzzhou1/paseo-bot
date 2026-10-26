@@ -2,9 +2,15 @@ import { randomUUID, createHash } from "node:crypto";
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import { executeCli } from "./cli.ts";
+import {
+  questionsSchema,
+  type respondConversation,
+} from "../shared/execution.ts";
+import type { RpcInput } from "@getpaseo/plugin";
 import type { PaseoApi } from "@getpaseo/client";
 import { z } from "zod";
-import { renameOwned } from "./rename.ts";
 import { configuration } from "../shared/contracts.ts";
 
 const record = z.object({
@@ -57,22 +63,104 @@ export function createBot() {
     queue = result.catch(() => {});
     return result;
   }
-  async function owned(paseo: PaseoApi, id: string) {
-    const state = await read();
+  async function owned(paseo: PaseoApi, id: string, { mutable = true } = {}) {
+    const state = await serial(read);
     const record = Object.values(state.requests).find(
       (entry) => entry.id === id,
     );
     if (!record) throw new Error("Not an owned Bot conversation");
-    const found = await paseo.agents.ref(id).refresh();
+    const result = await paseo.agents.ref(id).refresh();
     if (
-      !found ||
-      found.agent.workspaceId !== record.workspaceId ||
-      found.agent.labels["paseo-bot"] !== state.installationId
+      !result ||
+      result.agent.workspaceId !== record.workspaceId ||
+      result.agent.labels["paseo-bot"] !== state.installationId
     )
-      throw new Error("Owned Bot conversation is unavailable");
-    return found.agent;
+      throw new Error("Not an owned Bot conversation");
+    if (mutable && result.agent.archivedAt)
+      throw new Error("Archived conversations are read-only");
+    return result.agent;
   }
   return {
+    owned,
+    async respond(
+      paseo: PaseoApi,
+      input: RpcInput<typeof respondConversation>,
+    ) {
+      const agent = await owned(paseo, input.agentId);
+      const request = agent.pendingPermissions.find(
+        (request) => request.id === input.requestId,
+      );
+      if (!request)
+        throw new Error(
+          "This request is no longer pending in this conversation",
+        );
+      if (request.actions?.length) {
+        const action = request.actions.find(
+          (action) => action.id === input.actionId,
+        );
+        if (!action || action.behavior !== input.behavior)
+          throw new Error("Choose a current request action");
+      } else if (input.actionId) throw new Error("Unknown request action");
+      let updatedInput: Record<string, unknown> | undefined;
+      if (request.kind === "question" && input.behavior === "allow") {
+        const { questions } = questionsSchema.parse(request.input);
+        const answers: Record<string, string> = {};
+        for (const question of questions) {
+          const answer = input.answers?.[question.header]?.trim() ?? "";
+          if (!answer && !question.allowEmpty)
+            throw new Error(`Answer ${question.header}`);
+          if (
+            question.options.length &&
+            !question.allowOther &&
+            !question.isOther &&
+            answer
+          ) {
+            const selected = question.multiSelect
+              ? answer.split(", ")
+              : [answer];
+            if (
+              selected.some(
+                (label) =>
+                  !question.options.some((option) => option.label === label),
+              )
+            )
+              throw new Error(`Invalid answer for ${question.header}`);
+          }
+          answers[question.header] = answer;
+        }
+        updatedInput = { ...request.input, answers };
+      }
+      await paseo.agents.ref(input.agentId).respondToPermission({
+        requestId: input.requestId,
+        response:
+          input.behavior === "allow"
+            ? {
+                behavior: "allow",
+                selectedActionId: input.actionId,
+                ...(updatedInput ? { updatedInput } : {}),
+              }
+            : { behavior: "deny", selectedActionId: input.actionId },
+      });
+      return { accepted: true as const };
+    },
+    async stop(paseo: PaseoApi, id: string) {
+      await owned(paseo, id);
+      await executeCli(["agent", "stop", id]);
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const agent = await owned(paseo, id);
+        if (
+          agent.status !== "running" &&
+          agent.status !== "initializing" &&
+          !agent.activeTurn &&
+          agent.pendingPermissions.length === 0
+        )
+          return { stopped: true as const };
+        await delay(100);
+      }
+      throw new Error(
+        "Stop was not confirmed. The conversation may still be running; refresh and retry.",
+      );
+    },
     history: (
       paseo: PaseoApi,
       input: { limit: number; cursor?: { updatedAt: string; id: string } },
@@ -124,19 +212,16 @@ export function createBot() {
               : null,
         };
       }),
-    rename: (paseo: PaseoApi, input: { id: string; title: string }) =>
-      serial(async () => {
-        const agent = await owned(paseo, input.id);
-        if (agent.archivedAt)
-          throw new Error("Archived conversations are read-only");
-        await renameOwned(input.id, input.title);
-        const updated = await owned(paseo, input.id);
-        if (updated.title !== input.title)
-          throw new Error(
-            "Rename could not be confirmed; refresh history before retrying.",
-          );
-        return { id: input.id, title: updated.title };
-      }),
+    rename: async (paseo: PaseoApi, input: { id: string; title: string }) => {
+      await owned(paseo, input.id);
+      await executeCli(["agent", "update", input.id, "--name", input.title]);
+      const updated = await owned(paseo, input.id);
+      if (updated.title !== input.title)
+        throw new Error(
+          "Rename could not be confirmed; refresh history before retrying.",
+        );
+      return { id: input.id, title: updated.title };
+    },
     bootstrap: () =>
       serial(async () => {
         const state = await read();

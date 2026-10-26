@@ -113,17 +113,21 @@ export async function createIsolatedDaemon(
     method: "rename-conversation",
     input: unknown,
   ): Promise<RpcOutput<typeof renameConversation>>;
+  function rpc(method: string, input: unknown): Promise<unknown>;
   async function rpc(method: string, input: unknown): Promise<unknown> {
     const output = await driver.invokePluginRpc("paseo-bot", method, input);
     return (
-      method === "bootstrap"
+      (method === "bootstrap"
         ? bootstrap
         : method === "list-conversations"
           ? listConversations
           : method === "rename-conversation"
             ? renameConversation
-            : createConversation
-    ).output.parse(output);
+            : method === "create-conversation"
+              ? createConversation
+              : null
+      )?.output.parse(output) ?? output
+    );
   }
   for (let attempt = 0; attempt < 100; attempt++) {
     try {

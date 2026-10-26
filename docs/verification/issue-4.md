@@ -38,3 +38,11 @@ Untested here: actual dual-browser storage separation, visual desktop/mobile/tou
 - Spec P2: a last-selection persistence failure no longer blanks an otherwise recovered draft. Draft reading and selection writing report errors independently; a failed selection write preserves the loaded text.
 
 No production lifecycle action, dependency change, sibling checkout edit or browser fixture reset was used for these corrections. The 21-conversation isolated browser daemon remains available for root acceptance.
+
+## Merge with execution slice
+
+Merged integration revision `ef502ec2141c4724377705e854151460f8a7b01d` (#3) into `implement/issue-4`. Conflicts were resolved by preserving the execution timeline/request/Stop controls and pending-question send guard alongside the initialized-host/device-controller and per-slot draft guards. Rename now reuses #3's exact-owned validator and selected-home public CLI runner; the duplicate rename runner was removed. Rename does not hold the metadata queue while calling the shared validator (which serializes its own metadata read), avoiding nested-queue deadlock. History cursor ordering, read-only archive validation and post-rename snapshot confirmation are retained.
+
+Root reports the same real delayed-initialization assertion now passes (exit 0), with the saved draft restored, and actual browser history pagination 20 → 21, Enter-to-rename, plus new-slot/session draft restoration after refresh pass. Root retains screenshots and dual-client acceptance records. This merge does not reload the existing 41157 browser runtime while those checks are in progress.
+
+Combined merge verification: `npm run typecheck`, `npm run lint`, `npm run format:check`, `git diff --check` all exit 0; `npm test` exits 0 with **13/13** tests, including the isolated daemon Stop/refused cancellation/permission/question and history/rename boundaries. No full Paseo monorepo suite was run.

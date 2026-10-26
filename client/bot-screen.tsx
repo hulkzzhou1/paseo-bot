@@ -13,12 +13,7 @@ import {
   useRpc,
   type PluginScreenProps,
 } from "@getpaseo/plugin/client";
-import {
-  Icon,
-  Markdown,
-  Modal,
-  StreamedText,
-} from "@getpaseo/plugin/client/ui";
+import { Icon, Modal } from "@getpaseo/plugin/client/ui";
 import type { PaseoAgent, PaseoProviderSnapshotResult } from "@getpaseo/client";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import {
@@ -28,6 +23,7 @@ import {
 } from "../shared/contracts.ts";
 import { createDeviceState } from "./device-state.ts";
 import { HistoryMenu } from "./history.tsx";
+import { ExecutionItem, RequestCard, StopControl } from "./execution.tsx";
 import { observeConversation } from "./observation.ts";
 import { readDeviceValue, writeDeviceValue } from "./web.ts";
 import type { z } from "zod";
@@ -56,6 +52,10 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
     { seq: number; item: AgentTimelineItem }[]
   >([]);
   const [pending, setPending] = useState(false);
+  const [stopped, setStopped] = useState<{
+    host: string;
+    agentId: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [initializedHost, setInitializedHost] = useState<string | null>(null);
@@ -284,6 +284,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
       !composerReady ||
       busy.current ||
       running ||
+      waiting ||
       unavailable ||
       !draft.trim()
     )
@@ -295,6 +296,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
     }
     busy.current = true;
     setPending(true);
+    setStopped(null);
     setError(null);
     const submitted = draft;
     const sentSlot = selected;
@@ -374,6 +376,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
     agent?.status === "running" ||
     agent?.status === "initializing" ||
     Boolean(agent?.activeTurn);
+  const waiting = Boolean(agent?.pendingPermissions.length);
   const activeConfig = selected
     ? conversations.find((conversation) => conversation.id === selected)?.config
     : config;
@@ -392,7 +395,12 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
   const composerReady =
     !loading && initializedHost === host.id && device.current !== null;
   const disabled =
-    !composerReady || pending || running || unavailable || !draft.trim();
+    !composerReady ||
+    pending ||
+    running ||
+    waiting ||
+    unavailable ||
+    !draft.trim();
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -541,52 +549,49 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
               </Text>
             </View>
           )}
-          {items.map(({ item, seq }) =>
-            item.type === "user_message" ? (
-              <View
-                key={`${selected}:${seq}`}
-                style={{
-                  alignSelf: "flex-end",
-                  maxWidth: "100%",
-                  backgroundColor: theme.colors.surface2,
-                  borderRadius: 20,
-                  borderTopRightRadius: 3,
-                  padding: 16,
-                }}
-              >
-                <Text
-                  selectable
-                  style={{ ...normal, fontSize: 16, lineHeight: 22 }}
-                >
-                  {item.text}
-                </Text>
-              </View>
-            ) : item.type === "assistant_message" ? (
-              <View key={`${selected}:${seq}`} style={{ width: "100%" }}>
-                {running && seq === items.at(-1)?.seq ? (
-                  <StreamedText
-                    text={item.text}
-                    phase="streaming"
-                    style={{ ...normal, fontSize: 16, lineHeight: 22 }}
-                  />
-                ) : (
-                  <Markdown>{item.text}</Markdown>
-                )}
-              </View>
-            ) : item.type === "error" ? (
-              <Text
-                key={`${selected}:${seq}`}
-                style={{ color: theme.colors.statusDanger }}
-              >
-                {item.message}
-              </Text>
-            ) : null,
-          )}
+          {items.map(({ item, seq }) => (
+            <ExecutionItem
+              key={`${selected}:${seq}`}
+              item={item}
+              streaming={running && seq === items.at(-1)?.seq}
+              theme={theme}
+              layout={layout}
+            />
+          ))}
+          {selected &&
+            agent?.pendingPermissions.map((request) => (
+              <RequestCard
+                key={`${host.id}:${selected}:${request.id}`}
+                request={request}
+                agentId={selected}
+                theme={theme}
+                layout={layout}
+                disabled={unavailable}
+              />
+            ))}
         </View>
       </ScrollView>
       {unavailable && !observationError && (
         <Text style={{ ...muted, fontSize: 13, paddingBottom: 8 }}>
           Loading conversation…
+        </Text>
+      )}
+      {stopped?.host === host.id &&
+        stopped.agentId === selected &&
+        !running && (
+          <Text
+            accessibilityRole="alert"
+            style={{ ...muted, fontSize: 13, paddingBottom: 8 }}
+          >
+            Stopped. You can send your draft.
+          </Text>
+        )}
+      {waiting && !running && (
+        <Text
+          accessibilityRole="alert"
+          style={{ ...muted, fontSize: 13, paddingBottom: 8 }}
+        >
+          Waiting for your response. Your draft stays editable.
         </Text>
       )}
       {running && (
@@ -700,37 +705,47 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
               </>
             )}
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={pending ? "Sending…" : "Send"}
-            accessibilityState={{ disabled }}
-            disabled={disabled}
-            onPress={() => void send()}
-            style={{
-              width: 44,
-              height: 44,
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: disabled ? 0.45 : 1,
-            }}
-          >
-            <View
+          {running && selected ? (
+            <StopControl
+              key={`${host.id}:${selected}`}
+              agentId={selected}
+              theme={theme}
+              disabled={unavailable}
+              onStopped={() => setStopped({ host: host.id, agentId: selected })}
+            />
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={pending ? "Sending…" : "Send"}
+              accessibilityState={{ disabled }}
+              disabled={disabled}
+              onPress={() => void send()}
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 16,
-                backgroundColor: theme.colors.foreground,
+                width: 44,
+                height: 44,
                 alignItems: "center",
                 justifyContent: "center",
+                opacity: disabled ? 0.45 : 1,
               }}
             >
-              <Icon
-                name={pending ? "LoaderCircle" : "ArrowUp"}
-                size={18}
-                color={theme.colors.surface0}
-              />
-            </View>
-          </Pressable>
+              <View
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 16,
+                  backgroundColor: theme.colors.foreground,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Icon
+                  name={pending ? "LoaderCircle" : "ArrowUp"}
+                  size={18}
+                  color={theme.colors.surface0}
+                />
+              </View>
+            </Pressable>
+          )}
         </View>
       </View>
       <Modal
