@@ -42,6 +42,7 @@ export const listConversations = defineRpc({
   input: z.object({
     cursor: z.object({ updatedAt: z.string(), id: z.string() }).optional(),
     limit: z.number().int().min(1).max(50).default(20),
+    archived: z.boolean().default(false),
   }),
   output: z.object({
     entries: z.array(historyConversation),

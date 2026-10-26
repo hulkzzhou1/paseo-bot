@@ -22,6 +22,7 @@ import {
   createConversation,
 } from "../shared/contracts.ts";
 import { createDeviceState } from "./device-state.ts";
+import { WorkspaceLifecycle } from "./workspace-lifecycle.tsx";
 import { HistoryMenu } from "./history.tsx";
 import { ExecutionItem, RequestCard, StopControl } from "./execution.tsx";
 import { observeConversation } from "./observation.ts";
@@ -29,13 +30,34 @@ import { readDeviceValue, writeDeviceValue } from "./web.ts";
 import type { z } from "zod";
 
 type Configuration = z.infer<typeof configuration>;
-type Conversation = { id: string; workspaceId: string; config: Configuration };
+type Conversation = {
+  id: string;
+  workspaceId: string;
+  config: Configuration;
+  archivedAt?: string | null;
+};
 export function BotScreen({ theme, layout, host }: PluginScreenProps) {
   const paseo = usePaseo();
   const open = useRpc(bootstrap);
   const create = useRpc(createConversation);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [workspaceAccess, setWorkspaceAccess] = useState<{
+    host: string;
+    writable: boolean;
+  } | null>(null);
+  const workspaceChanged = useCallback(
+    (writable: boolean) => setWorkspaceAccess({ host: host.id, writable }),
+    [host.id],
+  );
+  const archivedConversation = useCallback((id: string, archivedAt: string) => {
+    setConversations((previous) =>
+      previous.map((entry) =>
+        entry.id === id ? { ...entry, archivedAt } : entry,
+      ),
+    );
+    setObservationAttempt((value) => value + 1);
+  }, []);
   const [config, setConfig] = useState<Partial<Configuration>>({});
   const [catalog, setCatalog] = useState<
     PaseoProviderSnapshotResult["entries"]
@@ -158,7 +180,6 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
           if (!active) return;
           const id =
             found &&
-            !found.agent.archivedAt &&
             found.agent.workspaceId === owned?.workspaceId &&
             found.agent.labels["paseo-bot"] === state.installationId
               ? remembered
@@ -282,6 +303,8 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
   async function send() {
     if (
       !composerReady ||
+      readOnly ||
+      !workspaceWritable ||
       busy.current ||
       running ||
       waiting ||
@@ -394,7 +417,15 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
   );
   const composerReady =
     !loading && initializedHost === host.id && device.current !== null;
+  const readOnly = Boolean(
+    agent?.archivedAt ||
+      conversations.find((entry) => entry.id === selected)?.archivedAt,
+  );
+  const workspaceWritable =
+    workspaceAccess?.host === host.id && workspaceAccess.writable;
   const disabled =
+    readOnly ||
+    !workspaceWritable ||
     !composerReady ||
     pending ||
     running ||
@@ -459,6 +490,11 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
           <Icon name="History" size={18} color={theme.colors.foregroundMuted} />
         </Pressable>
       </View>
+      <WorkspaceLifecycle
+        key={host.id}
+        theme={theme}
+        onChange={workspaceChanged}
+      />
       {Platform.OS !== "web" && (
         <Text style={muted}>
           This Paseo version cannot persist Bot preferences or drafts on native
@@ -472,6 +508,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
           onSelect={selectConversation}
           onClose={() => setHistory(false)}
           onEntries={mergeHistory}
+          onArchived={archivedConversation}
         />
       )}
       {loading && (
@@ -559,6 +596,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
             />
           ))}
           {selected &&
+            !readOnly &&
             agent?.pendingPermissions.map((request) => (
               <RequestCard
                 key={`${host.id}:${selected}:${request.id}`}
@@ -566,11 +604,20 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
                 agentId={selected}
                 theme={theme}
                 layout={layout}
-                disabled={unavailable}
+                disabled={unavailable || !workspaceWritable}
               />
             ))}
         </View>
       </ScrollView>
+      {readOnly && (
+        <Text
+          accessibilityRole="alert"
+          style={{ ...muted, fontSize: 13, paddingBottom: 8 }}
+        >
+          Archived conversation. Read-only. Use New conversation to continue
+          with context you supply yourself.
+        </Text>
+      )}
       {unavailable && !observationError && (
         <Text style={{ ...muted, fontSize: 13, paddingBottom: 8 }}>
           Loading conversation…
@@ -619,7 +666,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
           ref={input}
           accessibilityLabel="Message Paseo Bot"
           value={draft}
-          editable={composerReady}
+          editable={composerReady && !readOnly}
           onChangeText={editDraft}
           multiline
           placeholder="Message Paseo Bot…"
@@ -705,7 +752,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
               </>
             )}
           </View>
-          {running && selected ? (
+          {running && selected && !readOnly ? (
             <StopControl
               key={`${host.id}:${selected}`}
               agentId={selected}

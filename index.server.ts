@@ -5,10 +5,25 @@ import {
   listConversations,
   renameConversation,
 } from "./shared/contracts.ts";
+import {
+  archiveConversation,
+  inspectWorkspace,
+  rebuildWorkspace,
+} from "./shared/lifecycle.ts";
 import { createBot } from "./server/bot.ts";
 import { stopConversation, respondConversation } from "./shared/execution.ts";
 export default function contribute(server: PluginServerContext) {
   const bot = createBot();
+  const unhook = server.on("workspace.archived", ({ workspace }) =>
+    bot.workspaceArchived(workspace.id, workspace.archivedAt),
+  );
+  server.handle(inspectWorkspace, (_, { paseo }) => bot.inspect(paseo));
+  server.handle(rebuildWorkspace, ({ expectedWorkspaceId }, { paseo }) =>
+    bot.rebuild(paseo, expectedWorkspaceId),
+  );
+  server.handle(archiveConversation, ({ id }, { paseo }) =>
+    bot.archive(paseo, id),
+  );
   server.handle(respondConversation, (input, { paseo }) =>
     bot.respond(paseo, input),
   );
@@ -25,5 +40,7 @@ export default function contribute(server: PluginServerContext) {
   server.handle(renameConversation, (input, { paseo }) =>
     bot.rename(paseo, input),
   );
-  return () => {};
+  return () => {
+    unhook();
+  };
 }
