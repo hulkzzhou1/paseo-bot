@@ -1,0 +1,23 @@
+{
+  "revision": "22d704ab2b623f5a3be90e75d1984c9b23eb25f6",
+  "versions": {
+    "appArtifact": "0.13.2",
+    "daemon": "0.13.2",
+    "sdk": "0.13.2",
+    "provider": "codex0.160.1/gpt-6.1-sol/high/auto"
+  },
+  "serverId": "srv_V0-ryFzZ1AgT",
+  "parentId": "524f093f-650f-4fce-802c-ba224ca2ed70",
+  "childId": "416ff354-d1d3-43e3-a199-492eda52aff6",
+  "businessWorkspaceId": "wks_24214293ca4bde98",
+  "background": false,
+  "childParent": "524f093f-650f-4fce-802c-ba224ca2ed70",
+  "childBotLabelAbsent": true,
+  "existingParentUnchanged": true,
+  "ownedBotHistoryCount": 2,
+  "childExcludedFromBotHistory": true,
+  "businessFileExact": true,
+  "ordinaryFileExact": true,
+  "existingTargetCompletionReceived": true,
+  "businessCompletionReceived": true
+}

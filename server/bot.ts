@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { inspectArchivedWorkspace } from "./workspace-status.ts";
+import { managementPrompt } from "./management.ts";
 import { executeCli } from "./cli.ts";
 import {
   questionsSchema,
@@ -466,6 +467,7 @@ export function createBot() {
             agentId: conversation.id,
             idempotencyKey: input.requestId,
             config: {
+              systemPrompt: managementPrompt,
               provider: `${input.config.provider}/${input.config.model}`,
               modeId: input.config.modeId,
               thinkingOptionId: input.config.thinkingOptionId,

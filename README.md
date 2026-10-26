@@ -1,16 +1,20 @@
 # Paseo Bot
 
-A Paseo plugin for a persistent host-local management assistant. The Bot page offers independent conversations in a dedicated background workspace, with New conversation and History controls.
+A standalone Paseo plugin for a persistent host-local management assistant. Its global page provides independent conversations, native-style tool/permission/question interactions, Stop, history, local drafts, archive/rebuild, cautious delivery recovery and real delegated-target navigation.
 
-Status: implementation in progress against Paseo 0.13.2. The first slice provides the global Bot page, explicit configuration and durable daemon-owned conversations. The delivery target is a public Git release and submission to the Paseo community plugin registry; no registry listing exists yet.
+Release candidate for exactly Paseo **0.13.2**, with actual isolated Codex management/delegation and desktop/compact browser acceptance recorded. Final artifact review, exact remote revision installation, Git release, registry submission/review and directory listing remain separate pending milestones; no registry publication is claimed. See [OVERVIEW](OVERVIEW.md) for capabilities, setup, data flow and limitations, and [compatibility](docs/compatibility.md) for public API evidence.
 
 - [Specification](docs/spec.md) / [GitHub specification #1](https://github.com/hulkzzhou1/paseo-bot/issues/1)
-- [Architecture decision](docs/adr/0001-bot-workspace.md)
-- [Glossary](docs/glossary.md)
+- [Architecture decision](docs/adr/0001-bot-workspace.md) / [Glossary](docs/glossary.md)
 - [GitHub issues](https://github.com/hulkzzhou1/paseo-bot/issues)
+- Verification: [first conversation](docs/verification/issue-2.md), [execution](docs/verification/issue-3.md), [history/drafts](docs/verification/issue-4.md), [archive/rebuild](docs/verification/issue-5.md), [delivery/reconnect](docs/verification/issue-6.md), [management/release](docs/verification/issue-7.md)
 
-The source checkout is separate from the runtime working directory `~/.paseo/bot/` on the daemon host. The runtime directory contains shared task files; Paseo owns conversation history.
+The plugin source is separate from the ordinary daemon runtime directory `PASEO_HOME/bot`, normally `~/.paseo/bot`. Bot conversations share that directory's files and retain independent chat contexts; Paseo owns durable transcripts. Browser-local state is per device, host and conversation. The host may unmount the plugin surface while offline; reconnect/reopen restores saved state, without promising continuous offline editing. Native iOS/Android durable preferences/drafts are unsupported, and Electron is untested.
 
-Development checks: `npm ci --include=dev`, `npm run typecheck`, `npm run lint`, `npm run format:check`, and `npm test`. The focused daemon tests start their own temporary loopback daemon and never use the production daemon. Override `PASEO_TEST_CLI` when the tested CLI is outside `PATH`.
+Management requires the selected Provider's existing host tools and daemon MCP injection policy. In 0.13.2, `daemon.mcp.injectIntoAgents` defaults to false; host setup must explicitly allow the intended supported management tools. The plugin never enables them or bypasses approvals. Available tools, models and modes depend on the configured Provider. Only Codex has actual Provider acceptance evidence; deterministic fixture tests supplement it. Do not treat shared Bot files as a security sandbox. Public SDK 0.13.2 cannot atomically reject a send if an outside client starts the same Agent between validation and dispatch.
 
-The first release guarantees desktop and compact mobile browsers. Native device-local persistence is unavailable through the supported 0.13.2 plugin SDK and is not guaranteed. See [verification](docs/verification/issue-2.md) for actual evidence and remaining checks.
+The public Git manifest prepares exact locked production dependencies with `npm ci --omit=dev --ignore-scripts`; it does not require npm publication. The standalone read-only archived-workspace helper needs `@getpaseo/client` and `@getpaseo/server` installed at runtime. Other direct host libraries are development dependencies supplied by Paseo's plugin runtime. Select a reviewed fixed Git revision when installing; final release/tag and isolated exact-revision evidence will be linked from the management/release record. Production installation/configuration changes and production daemon restarts are outside this project's verification.
+
+For development, run `npm ci --include=dev --ignore-scripts`, `npm run typecheck`, `npm run lint`, `npm run format:check`, and `npm test`. Tests start real temporary loopback daemons with test-owned resources and never operate the production daemon. Override `PASEO_TEST_CLI` when the tested CLI is outside PATH. Do not run the entire sibling Paseo monorepo test suite.
+
+Original code: [MIT](LICENSE). Third-party attribution: [notices](THIRD_PARTY_NOTICES.md).

@@ -1,6 +1,6 @@
 # Paseo Bot：单主机管理助手插件规格
 
-状态：产品需求已确认，实施拆分及验收边界已确认，尚未实现。公开仓库：hulkzzhou1/paseo-bot。最终目标是完成可安装插件并发布到 Paseo 社区。
+状态：已按确认需求完成实现及隔离 daemon、真实 Provider 和浏览器验收；发布验证进行中，远程固定 Git 修订安装、Git release 与社区目录申请/审核/上线尚未完成。公开仓库：hulkzzhou1/paseo-bot。最终目标是发布到 Paseo 社区；以各 ticket 的实际验证与发布记录为准。
 
 ## Problem Statement
 
