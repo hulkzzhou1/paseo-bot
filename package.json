@@ -1,0 +1,30 @@
+{
+  "name": "paseo-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:daemon": "node --import tsx --test tests/daemon.test.ts"
+  },
+  "dependencies": {
+    "@getpaseo/client": "0.13.2",
+    "@getpaseo/plugin": "0.13.2",
+    "@getpaseo/protocol": "0.13.2",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.6",
+    "@getpaseo/server": "0.13.2",
+    "@types/node": "22.19.15",
+    "@types/react": "19.2.14",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3"
+  }
+}
