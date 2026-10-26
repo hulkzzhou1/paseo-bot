@@ -35,13 +35,20 @@ test("first sends share one background workspace and retain exact conversation i
         thinkingOptionId: "brief",
       },
     };
-    const [one, two] = await Promise.all([
+    const [one, two, other] = await Promise.all([
       daemon.rpc("create-conversation", input),
       daemon.rpc("create-conversation", input),
+      daemon.rpc("create-conversation", {
+        ...input,
+        requestId: "cd28a0f7-cec4-4789-914d-cd38a235390a",
+        text: "Independent conversation",
+      }),
     ]);
     assert.equal(one.id, two.id);
+    assert.notEqual(one.id, other.id);
+    assert.equal(one.workspaceId, other.workspaceId);
     const state = await daemon.rpc("bootstrap", {});
-    assert.equal(state.conversations.length, 1);
+    assert.equal(state.conversations.length, 2);
     const workspace = await daemon.client.workspaces
       .ref(one.workspaceId)
       .refresh();
