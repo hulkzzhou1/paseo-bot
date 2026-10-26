@@ -100,11 +100,14 @@ export async function createIsolatedDaemon(
     method: "create-conversation",
     input: unknown,
   ): Promise<RpcOutput<typeof createConversation>>;
+  function rpc(method: string, input: unknown): Promise<unknown>;
   async function rpc(method: string, input: unknown): Promise<unknown> {
     const output = await driver.invokePluginRpc("paseo-bot", method, input);
-    return (
-      method === "bootstrap" ? bootstrap : createConversation
-    ).output.parse(output);
+    return method === "bootstrap"
+      ? bootstrap.output.parse(output)
+      : method === "create-conversation"
+        ? createConversation.output.parse(output)
+        : output;
   }
   for (let attempt = 0; attempt < 100; attempt++) {
     try {
