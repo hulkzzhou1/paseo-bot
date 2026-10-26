@@ -86,7 +86,27 @@ export function createBot() {
               "Request identity already belongs to another message",
             );
           const found = await paseo.agents.ref(previous.id).refresh();
-          if (found) return previous;
+          if (found) {
+            const handle = paseo.agents.ref(previous.id);
+            let page = await handle.timeline.refetch({ limit: 200 });
+            for (;;) {
+              if (page.error) break;
+              if (
+                page.entries.some(
+                  ({ item }) =>
+                    item.type === "user_message" &&
+                    item.clientMessageId === input.requestId,
+                )
+              )
+                return previous;
+              if (!page.hasOlder || !page.startCursor) break;
+              page = await handle.timeline.refetch({
+                direction: "before",
+                cursor: page.startCursor,
+                limit: 200,
+              });
+            }
+          }
           throw new Error(
             "Creation outcome unknown. Reconcile before trying another request.",
           );
