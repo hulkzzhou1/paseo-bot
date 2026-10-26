@@ -26,6 +26,21 @@ export function createDeviceState(
     drafts.set(slot, result);
     return result;
   }
+  function latest(slot: string | null): Draft {
+    const current = draft(slot);
+    const stored = storage.read(key(slot)) as Partial<Draft> | null;
+    if (
+      stored &&
+      typeof stored.text === "string" &&
+      Number.isSafeInteger(stored.revision) &&
+      (stored.revision as number) >= current.revision
+    ) {
+      const fresh = { text: stored.text, revision: stored.revision as number };
+      drafts.set(slot, fresh);
+      return fresh;
+    }
+    return current;
+  }
   function edit(slot: string | null, text: string) {
     const value = { text, revision: draft(slot).revision + 1 };
     drafts.set(slot, value);
@@ -36,16 +51,20 @@ export function createDeviceState(
     draft,
     edit,
     created(id: string, submitted: Draft) {
-      const current = draft(null);
+      const current = latest(null);
       const remaining =
-        current.revision === submitted.revision ? "" : current.text;
+        current.revision === submitted.revision &&
+        current.text === submitted.text
+          ? ""
+          : current.text;
       edit(id, remaining);
       edit(null, "");
       return remaining;
     },
     accepted(slot: string | null, submitted: Draft) {
-      const current = draft(slot);
-      return current.revision === submitted.revision
+      const current = latest(slot);
+      return current.revision === submitted.revision &&
+        current.text === submitted.text
         ? edit(slot, "")
         : current.text;
     },

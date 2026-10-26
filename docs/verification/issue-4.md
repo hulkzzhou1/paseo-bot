@@ -30,3 +30,11 @@ All commands run from the issue-4 worktree, without production configuration or 
 Focused red/green commands: `node --import tsx --test tests/device-state.test.ts` and `node --import tsx --test tests/history.test.ts`.
 
 Untested here: actual dual-browser storage separation, visual desktop/mobile/touch/keyboard acceptance and actual Provider history navigation; root acceptance records will supply these. Native device persistence is explicitly unsupported by stable 0.13.2's public global-screen API under accepted specification decision 15. No screenshot is fabricated from fixture assertions.
+
+## Independent-review corrections
+
+- Standards P2: the composer was editable before asynchronous bootstrap/provider discovery/device restoration finished. Root reproduced the actual boundary red on compiled `1e7168f`: pause the two exact-home isolated plugin workers, open Bot, see `Loading Bot…` while the input reports `readOnly=false` and `disabled=false`; the non-editable assertion failed (exit 1). Both workers were resumed in `finally`, and the saved `RESTORED_DRAFT` restored. The composer and navigation now stay disabled until the selected host's device state finishes initialization; the host identity guard also covers the first render following a host switch. Root will rerun the same actual browser assertion after isolated reload.
+- Spec P2: a late send acknowledgement after A → B → A could act on the earlier visit's device controller. Async send updates now require the exact current device-controller identity as well as host identity. Cleanup also reads the current stored revision before clearing; a regression using an earlier and a recreated controller first failed with an empty draft instead of the newer saved text (exit 1), then passed after correction.
+- Spec P2: a last-selection persistence failure no longer blanks an otherwise recovered draft. Draft reading and selection writing report errors independently; a failed selection write preserves the loaded text.
+
+No production lifecycle action, dependency change, sibling checkout edit or browser fixture reset was used for these corrections. The 21-conversation isolated browser daemon remains available for root acceptance.

@@ -58,6 +58,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initializedHost, setInitializedHost] = useState<string | null>(null);
   const [observationAttempt, setObservationAttempt] = useState(0);
   const [observationError, setObservationError] = useState<string | null>(null);
   const messageScroll = useRef<ScrollView>(null);
@@ -90,9 +91,13 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
     request.current = null;
     try {
       setDraft(device.current?.draft(id).text ?? "");
-      device.current?.select(id);
     } catch (reason) {
       setDraft("");
+      persistenceError(reason);
+    }
+    try {
+      device.current?.select(id);
+    } catch (reason) {
       persistenceError(reason);
     }
   }
@@ -118,6 +123,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
     setPicker(null);
     setHistory(false);
     setLoading(true);
+    setInitializedHost(null);
     selectedRef.current = null;
     device.current = null;
     setSelected(null);
@@ -174,6 +180,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
         } catch {
           setError("Device preferences could not be read.");
         }
+        setInitializedHost(host.id);
         setLoading(false);
       })
       .catch((reason) => {
@@ -273,7 +280,14 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
     );
   }
   async function send() {
-    if (busy.current || running || unavailable || !draft.trim()) return;
+    if (
+      !composerReady ||
+      busy.current ||
+      running ||
+      unavailable ||
+      !draft.trim()
+    )
+      return;
     const parsed = configuration.safeParse(config);
     if (!selected && !parsed.success) {
       setError("Choose provider, model and permission mode before sending.");
@@ -286,6 +300,8 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
     const sentSlot = selected;
     const sentDevice = device.current;
     const sentHost = host.id;
+    const isCurrentVisit = () =>
+      currentHost.current === sentHost && device.current === sentDevice;
     try {
       const submittedDraft = sentDevice?.draft(sentSlot);
       if (selected) {
@@ -303,7 +319,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
           text: submitted,
           config: parsed.data as Configuration,
         });
-        if (currentHost.current !== sentHost) return;
+        if (!isCurrentVisit()) return;
         setConversations((previous) => [
           ...previous.filter((entry) => entry.id !== conversation.id),
           conversation,
@@ -333,7 +349,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
           );
         }
       }
-      if (currentHost.current === sentHost && sentDevice && submittedDraft) {
+      if (isCurrentVisit() && sentDevice && submittedDraft) {
         try {
           const remaining = sentDevice.accepted(sentSlot, submittedDraft);
           if (selectedRef.current === sentSlot) setDraft(remaining);
@@ -342,9 +358,9 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
         }
       }
     } catch (reason) {
-      if (currentHost.current === sentHost) setError(String(reason));
+      if (isCurrentVisit()) setError(String(reason));
     } finally {
-      if (currentHost.current === sentHost) {
+      if (isCurrentVisit()) {
         busy.current = false;
         setPending(false);
       }
@@ -373,8 +389,10 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
   const activeMode = activeProvider?.modes?.find(
     (mode) => mode.id === activeConfig?.modeId,
   );
+  const composerReady =
+    !loading && initializedHost === host.id && device.current !== null;
   const disabled =
-    loading || pending || running || unavailable || !draft.trim();
+    !composerReady || pending || running || unavailable || !draft.trim();
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -402,8 +420,8 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="New conversation"
-          disabled={loading}
-          accessibilityState={{ disabled: loading }}
+          disabled={!composerReady}
+          accessibilityState={{ disabled: !composerReady }}
           onPress={() => {
             selectConversation(null);
             input.current?.focus();
@@ -420,8 +438,8 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="History"
-          disabled={loading}
-          accessibilityState={{ disabled: loading }}
+          disabled={!composerReady}
+          accessibilityState={{ disabled: !composerReady }}
           onPress={() => setHistory((value) => !value)}
           style={{
             width: 44,
@@ -596,6 +614,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
           ref={input}
           accessibilityLabel="Message Paseo Bot"
           value={draft}
+          editable={composerReady}
           onChangeText={editDraft}
           multiline
           placeholder="Message Paseo Bot…"

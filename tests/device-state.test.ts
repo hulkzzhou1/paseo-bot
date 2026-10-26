@@ -83,3 +83,26 @@ test("accepted first send promotes newer edits to its created conversation witho
   );
   assert.equal(device.draft(null).text, "");
 });
+
+test("a late acknowledgement from an earlier host visit cannot erase a newer stored draft revision", () => {
+  const values = new Map<string, unknown>();
+  const storage = {
+    read: (key: string) => values.get(key),
+    write: (key: string, value: unknown) => {
+      values.set(key, value);
+    },
+  };
+  const earlierVisit = createDeviceState(storage, "host-a", "install");
+  earlierVisit.edit("one", "submitted before navigating away");
+  const submitted = earlierVisit.draft("one");
+  const returnVisit = createDeviceState(storage, "host-a", "install");
+  returnVisit.edit("one", "newer text after returning to host-a");
+  assert.equal(
+    earlierVisit.accepted("one", submitted),
+    "newer text after returning to host-a",
+  );
+  assert.equal(
+    createDeviceState(storage, "host-a", "install").draft("one").text,
+    "newer text after returning to host-a",
+  );
+});
