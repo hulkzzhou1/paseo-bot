@@ -39,3 +39,9 @@ From the issue-6 worktree:
 Focused commands: `node --import tsx --test tests/delivery.test.ts`, `tests/observation.test.ts`, and `tests/device-state.test.ts`.
 
 Root owns final browser fault injection, desktop/mobile screenshots, actual Provider recovery and independent Standards/Spec review. A fresh test-only daemon/source is available for that acceptance; its password is confined to a private temporary context file and is not published. Native iOS/Android and Electron remain untested. Community publication belongs to the final ticket.
+
+## Independent review corrections
+
+Standards review identified a first-send cleanup ordering error. Root reproduced it on `b83f265` by holding the real accepted response, typing `STORAGE_NEWER_EDIT`, failing only the browser selection write, then forwarding the response. The Agent executed once and newer text survived, but a retained original-slot outbox became unreachable after selection moved; Send remained enabled (browser assertion exit 1). Cleanup now commits draft promotion and original-slot outbox removal before changing selection. Selection/config preference errors after that commit remain visible without concealing an unresolved delivery. A real outbox cleanup failure leaves the original slot and Check delivery reachable; the existing repeated-promotion guard retains its follow-up draft for reload/reconciliation.
+
+Spec review identified that a failed initial bootstrap/catalog operation on a stable connection left the composer disabled with no retry. Retry Bot initialization now explicitly repeats read-only bootstrap/discovery and restores device selection, drafts and pending delivery. It does not resend tasks. A simple network interruption in root's browser recovered automatically through the host facade, so that network case is not recorded as a failing regression. Stable-connection operation-error injection and the final cleanup browser replay are root-owned acceptance evidence.

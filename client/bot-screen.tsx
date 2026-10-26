@@ -70,6 +70,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [initializedHost, setInitializedHost] = useState<string | null>(null);
+  const [initializationAttempt, setInitializationAttempt] = useState(0);
   const [observationAttempt, setObservationAttempt] = useState(0);
   const [observationError, setObservationError] = useState<string | null>(null);
   const messageScroll = useRef<ScrollView>(null);
@@ -163,6 +164,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
   }
   const muted = { color: theme.colors.foregroundMuted };
   const normal = { color: theme.colors.foreground };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: explicit retry repeats bootstrap and restores saved device state.
   useEffect(() => {
     let active = true;
     const visit = ++lifetime.current;
@@ -248,7 +250,14 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
       active = false;
       if (lifetime.current === visit) lifetime.current++;
     };
-  }, [paseo, open, host.id, persistenceError, loadDelivery]);
+  }, [
+    paseo,
+    open,
+    host.id,
+    persistenceError,
+    loadDelivery,
+    initializationAttempt,
+  ]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: explicit retry replaces a released SDK observation.
   useEffect(() => {
     setItems([]);
@@ -367,6 +376,7 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
       });
     if (result.state !== "accepted" && result.state !== "failed") return;
     try {
+      let promoted: { conversation: Conversation; draft: string } | null = null;
       if (result.state === "accepted") {
         const conversation = result.conversation;
         if (conversation)
@@ -380,20 +390,31 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
           selectedRef.current === null &&
           navigation.current === context.selection
         ) {
-          setDraft(store.created(conversation.id, record));
-          selectedRef.current = conversation.id;
-          setSelected(conversation.id);
-          store.select(conversation.id);
-          writeDeviceValue(
-            `${context.sentHost}:configuration`,
-            conversation.config,
-          );
+          promoted = {
+            conversation,
+            draft: store.created(conversation.id, record),
+          };
         } else {
           const remaining = store.accepted(record.slot, record);
           if (selectedRef.current === record.slot) setDraft(remaining);
         }
       }
       store.setDelivery(record.slot, null);
+      if (promoted) {
+        const { conversation, draft } = promoted;
+        setDraft(draft);
+        selectedRef.current = conversation.id;
+        setSelected(conversation.id);
+        try {
+          store.select(conversation.id);
+          writeDeviceValue(
+            `${context.sentHost}:configuration`,
+            conversation.config,
+          );
+        } catch (reason) {
+          persistenceError(reason);
+        }
+      }
     } catch (reason) {
       persistenceError(reason);
       if (selectedRef.current === record.slot)
@@ -650,6 +671,13 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
           {error}
         </Text>
       )}
+      {!loading &&
+        initializedHost !== host.id &&
+        button(
+          "Retry Bot initialization",
+          () => setInitializationAttempt((value) => value + 1),
+          !online,
+        )}
       {!online && (
         <Text
           accessibilityRole="alert"
