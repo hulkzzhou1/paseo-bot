@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { buildQuestionAnswers } from "./question-answers.ts";
 import {
   ActivityIndicator,
   Pressable,
@@ -318,13 +319,7 @@ export function RequestCard({
   const parsed = questionsSchema.safeParse(request.input);
   const questions =
     request.kind === "question" && parsed.success ? parsed.data.questions : [];
-  const payload = Object.fromEntries(
-    questions.map((question) => [
-      question.header,
-      custom[question.header]?.trim() ||
-        (answers[question.header] ?? []).join(", "),
-    ]),
-  );
+  const payload = buildQuestionAnswers(questions, answers, custom);
   const ready =
     questions.length > 0 &&
     questions.every(
@@ -465,10 +460,11 @@ export function RequestCard({
                     accessibilityLabel={option.label}
                     disabled={pending || disabled}
                     onPress={() => {
-                      setCustom((previous) => ({
-                        ...previous,
-                        [question.header]: "",
-                      }));
+                      if (!question.multiSelect)
+                        setCustom((previous) => ({
+                          ...previous,
+                          [question.header]: "",
+                        }));
                       setAnswers((previous) => ({
                         ...previous,
                         [question.header]: question.multiSelect
@@ -548,12 +544,17 @@ export function RequestCard({
                   }
                   placeholderTextColor={theme.colors.foregroundMuted}
                   value={custom[question.header] ?? ""}
-                  onChangeText={(text) =>
+                  onChangeText={(text) => {
                     setCustom((previous) => ({
                       ...previous,
                       [question.header]: text,
-                    }))
-                  }
+                    }));
+                    if (!question.multiSelect && text.length > 0)
+                      setAnswers((previous) => ({
+                        ...previous,
+                        [question.header]: [],
+                      }));
+                  }}
                   style={{
                     color: theme.colors.foreground,
                     backgroundColor: theme.colors.surface2,

@@ -2,6 +2,8 @@ import { strict as assert } from "node:assert";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
+import { buildQuestionAnswers } from "../client/question-answers.ts";
+import { questionsSchema } from "../shared/execution.ts";
 import { createIsolatedDaemon } from "./isolated-daemon.ts";
 
 test("Stop confirms only the exact owned conversation and rejects unrelated IDs", {
@@ -172,11 +174,16 @@ test("tool and question replies bind the owned conversation and exact pending re
       }),
       /Answer Secret/,
     );
+    const answers = buildQuestionAnswers(
+      questionsSchema.parse(question.input).questions,
+      { Choice: ["One", "Two"] },
+      { Choice: "Three", Secret: "fixture-secret" },
+    );
     await daemon.rpc("respond-conversation", {
       agentId: first.id,
       requestId: question.id,
       behavior: "allow",
-      answers: { Choice: "One, Two", Secret: "fixture-secret" },
+      answers,
     });
     await handle.waitForFinish(10000);
     const result = await handle.timeline.refetch();
@@ -187,7 +194,7 @@ test("tool and question replies bind the owned conversation and exact pending re
     const response = JSON.parse(reply.item.text);
     assert.equal(response.updatedInput.sentinel, "preserved");
     assert.deepEqual(response.updatedInput.answers, {
-      Choice: "One, Two",
+      Choice: "One, Two, Three",
       Secret: "fixture-secret",
     });
     await assert.rejects(

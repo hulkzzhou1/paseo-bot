@@ -19,3 +19,11 @@ The native-style execution UI uses only public RN/theme/UI primitives: compact t
 - A first question test exposed asynchronous permission resolution (the old request can remain in a refreshed snapshot just after response acknowledgement). The test now waits for the next distinct request. The UI keeps successful response actions disabled until that request actually resolves, avoiding repeat submission during the acknowledgement/resolution gap.
 
 The fixture produces deterministic states; it does not replace actual Provider/browser acceptance. Root acceptance owns the real Codex chain, desktop/mobile/dark screenshots and independent Standards/Spec review. Those evidence items must be appended before ticket closure. iOS, Android native and Electron remain untested.
+
+## Spec review correction: combined multiselect/custom answers
+
+Independent Spec review found that a multiselect custom answer replaced selected options and selecting another option erased the custom text. Root reproduced the UI failure on the old runtime: select One, type Three, select Two; the custom input became empty (assertion exit 1).
+
+Multiselect now keeps the typed custom value when checkboxes change and serializes selected labels followed by that custom value. Single-choice custom text and selected options replace one another visibly. The same small serializer is used by the actual request card and the real-daemon question test; the Provider must receive exactly `Choice: "One, Two, Three"` while retaining the original question input and secret answer.
+
+The new response-boundary regression initially failed with the missing serializer (exit 1). After implementation, `npm test` passed 8/8 (exit 0); typecheck, lint, format and whitespace checks also exited 0. Root's UI replay and final independent review are recorded separately before closure.
