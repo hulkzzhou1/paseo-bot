@@ -18,6 +18,15 @@ export const provider: ProviderRegistration = {
   async connect() {
     const listeners = new Set<(event: ProviderEvent) => void>();
     const counts = new Map<string, number>();
+    const configurations = new Map<
+      string,
+      {
+        systemPrompt?: string;
+        mode?: string;
+        preapproved: number;
+        mcpServers: string[];
+      }
+    >();
     const turns = new Map<string, { id: string; scenario: string }>();
     const history = new Map<string, ProviderTimelineItem[]>();
     function persist(sessionId: string) {
@@ -63,6 +72,12 @@ export const provider: ProviderRegistration = {
             catalog: { models, modes },
           });
         if (input.type === "session.open") {
+          configurations.set(input.sessionId, {
+            systemPrompt: input.config.systemPrompt,
+            mode: input.config.mode,
+            preapproved: input.config.toolPolicy?.preapproved.length ?? 0,
+            mcpServers: Object.keys(input.config.mcpServers),
+          });
           const data = input.persistence?.data;
           const restored: ProviderTimelineItem[] =
             data &&
@@ -143,6 +158,24 @@ export const provider: ProviderRegistration = {
           });
           persist(input.sessionId);
           turns.set(input.sessionId, { id: turnId, scenario: text });
+          if (text === "inspect-bot-config") {
+            emit({
+              type: "timeline.item",
+              sessionId: input.sessionId,
+              item: {
+                id: `${turnId}:config`,
+                type: "assistant_message",
+                text: JSON.stringify(configurations.get(input.sessionId)),
+              },
+            });
+            emit({
+              type: "session.turn",
+              sessionId: input.sessionId,
+              turnId,
+              state: "completed",
+            });
+            return;
+          }
           if (text.startsWith("history-pages"))
             for (let index = 0; index < 220; index++)
               emit({

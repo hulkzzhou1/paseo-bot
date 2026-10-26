@@ -27,6 +27,7 @@ import {
 import { userError } from "../shared/user-error.ts";
 import { createDeviceState } from "./device-state.ts";
 import { WorkspaceLifecycle } from "./workspace-lifecycle.tsx";
+import { DelegatedTargets } from "./delegated-targets.tsx";
 import { HistoryMenu } from "./history.tsx";
 import { ExecutionItem, RequestCard, StopControl } from "./execution.tsx";
 import { observeConversation } from "./observation.ts";
@@ -42,7 +43,12 @@ type Conversation = {
   config: Configuration;
   archivedAt?: string | null;
 };
-export function BotScreen({ theme, layout, host }: PluginScreenProps) {
+export function BotScreen({
+  theme,
+  layout,
+  host,
+  navigation: hostNavigation,
+}: PluginScreenProps) {
   const paseo = usePaseo();
   const open = useRpc(bootstrap);
   const submit = useRpc(submitDelivery);
@@ -852,6 +858,15 @@ export function BotScreen({ theme, layout, host }: PluginScreenProps) {
                 disabled={unavailable || !online || !workspaceWritable}
               />
             ))}
+          {selected && (
+            <DelegatedTargets
+              key={`${host.id}:${selected}`}
+              parentId={selected}
+              hostId={host.id}
+              theme={theme}
+              navigation={hostNavigation}
+            />
+          )}
         </View>
       </ScrollView>
       {readOnly && (
