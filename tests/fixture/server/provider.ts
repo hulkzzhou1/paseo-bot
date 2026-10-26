@@ -16,12 +16,13 @@ export const provider: ProviderRegistration = {
   status: async () => ({ available: true }),
   async connect() {
     const listeners = new Set<(event: ProviderEvent) => void>();
+    const turns = new Map<string, { id: string; scenario: string }>();
     function emit(event: ProviderEvent) {
       for (const listener of listeners) listener(event);
     }
     return {
       version: 1,
-      capabilities: ["prompt.message", "session.persistence"],
+      capabilities: ["prompt.message", "session.persistence", "permission"],
       onEvent(listener) {
         listeners.add(listener);
         return () => listeners.delete(listener);
@@ -42,7 +43,11 @@ export const provider: ProviderRegistration = {
             sessionId: input.sessionId,
             requestId: input.requestId,
             cwd: input.config.cwd,
-            capabilities: ["prompt.message", "session.persistence"],
+            capabilities: [
+              "prompt.message",
+              "session.persistence",
+              "permission",
+            ],
             restoration: "core",
             persistence: { version: 1, data: { id: input.sessionId } },
           });
@@ -78,6 +83,77 @@ export const provider: ProviderRegistration = {
             turnId,
             state: "started",
           });
+          const text =
+            input.prompt.input.type === "message"
+              ? input.prompt.input.content
+                  .filter((part) => part.type === "text")
+                  .map((part) => part.text)
+                  .join("")
+              : "";
+          turns.set(input.sessionId, { id: turnId, scenario: text });
+          if (text.startsWith("execution")) {
+            for (const status of ["running", "completed"] as const)
+              emit({
+                type: "timeline.item",
+                sessionId: input.sessionId,
+                item: {
+                  id: `${turnId}:tool`,
+                  type: "tool_call",
+                  callId: `${turnId}:tool`,
+                  name: "shell",
+                  status,
+                  error: null,
+                  detail: {
+                    type: "shell",
+                    command: "printf fixture",
+                    cwd: "/fixture",
+                    output:
+                      status === "completed" ? "fixture tool success" : "",
+                    exitCode: status === "completed" ? 0 : null,
+                  },
+                },
+              });
+            emit({
+              type: "timeline.item",
+              sessionId: input.sessionId,
+              item: {
+                id: `${turnId}:failed`,
+                type: "tool_call",
+                callId: `${turnId}:failed`,
+                name: "shell",
+                status: "failed",
+                error: "fixture tool failure",
+                detail: {
+                  type: "shell",
+                  command: "false",
+                  output: "fixture stderr",
+                  exitCode: 1,
+                },
+              },
+            });
+            emit({
+              type: "session.permission",
+              sessionId: input.sessionId,
+              request: {
+                id: `${turnId}:approval`,
+                name: "shell",
+                kind: "tool",
+                title: "Approve fixture tool",
+                detail: { type: "shell", command: "printf approved" },
+                actions: [
+                  {
+                    id: "approve-once",
+                    label: "Allow once",
+                    behavior: "allow",
+                  },
+                  { id: "reject", label: "Deny", behavior: "deny" },
+                ],
+              },
+            });
+            return;
+          }
+          if (text.startsWith("hold") || text.startsWith("stop-failure"))
+            return;
           emit({
             type: "timeline.item",
             sessionId: input.sessionId,
@@ -104,6 +180,77 @@ export const provider: ProviderRegistration = {
               state: "completed",
             });
           }, 300);
+        }
+        if (input.type === "session.permission") {
+          const turn = turns.get(input.sessionId);
+          if (!turn) return;
+          emit({
+            type: "session.permission_resolved",
+            sessionId: input.sessionId,
+            permissionId: input.permissionId,
+          });
+          if (
+            input.permissionId.endsWith(":approval") &&
+            input.response.behavior === "allow"
+          ) {
+            emit({
+              type: "session.permission",
+              sessionId: input.sessionId,
+              request: {
+                id: `${turn.id}:question`,
+                name: "request_user_input",
+                kind: "question",
+                title: "Fixture questions",
+                input: {
+                  sentinel: "preserved",
+                  questions: [
+                    {
+                      header: "Choice",
+                      question: "Choose fixture options",
+                      multiSelect: true,
+                      options: [{ label: "One" }, { label: "Two" }],
+                      isOther: true,
+                    },
+                    {
+                      header: "Secret",
+                      question: "Enter fixture secret",
+                      isSecret: true,
+                      options: [],
+                    },
+                  ],
+                },
+              },
+            });
+          } else {
+            emit({
+              type: "timeline.item",
+              sessionId: input.sessionId,
+              item: {
+                id: `${turn.id}:result`,
+                type: "assistant_message",
+                text: JSON.stringify(input.response),
+              },
+            });
+            emit({
+              type: "session.turn",
+              sessionId: input.sessionId,
+              turnId: turn.id,
+              state: "completed",
+            });
+          }
+        }
+        if (input.type === "session.interrupt") {
+          const turn = turns.get(input.sessionId);
+          if (turn?.scenario.startsWith("stop-failure"))
+            throw new Error("fixture refused stop");
+          if (turn)
+            emit({
+              type: "session.turn",
+              sessionId: input.sessionId,
+              turnId: turn.id,
+              state: "canceled",
+            });
+          emit({ type: "request.completed", requestId: input.requestId });
         }
         if (input.type === "session.close")
           emit({ type: "request.completed", requestId: input.requestId });
