@@ -117,6 +117,8 @@ export function DelegatedTargets({
         onPress={onPress}
         style={{
           minHeight: 44,
+          maxWidth: "100%",
+          flexShrink: 1,
           padding: 10,
           borderWidth: 1,
           borderColor: theme.colors.border,
@@ -124,7 +126,14 @@ export function DelegatedTargets({
           opacity: disabled ? 0.5 : 1,
         }}
       >
-        <Text style={{ color: theme.colors.foreground, fontSize: 13 }}>
+        <Text
+          style={{
+            color: theme.colors.foreground,
+            fontSize: 13,
+            flexShrink: 1,
+            minWidth: 0,
+          }}
+        >
           {label}
         </Text>
       </Pressable>
