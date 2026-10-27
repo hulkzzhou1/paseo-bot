@@ -1,0 +1,10 @@
+{
+  "agentId": "f652c8fa-2be1-4296-8c9a-04c62a073189",
+  "answer": "我会先查看 TAPD 技能的委派规则，只确认职责和工具选择，不读取单据或创建任务。\n\n\n---\n\n如果你明确让我处理 TAPD 单，我会使用 **TAPD 专用委派工具**，不会自己开发，也不会直接创建普通 Agent。\n\n- **Bot 职责**：理解需求与验收条件、协调执行、跟进进度，并向你反馈结果。\n- **工具选择**：先用 `tapd_agent_options` 核对项目和模型，再用 `tapd_dispatch_agent` 创建执行 Agent，保留单据关联。工具缺失时说明阻塞，不绕过流程。\n- **授权边界**：给我单据不等于授权开发；仅查询或讨论时，不绑定、不派发、不改状态。\n\n本次只查看了技能规则，未读取真实单据、创建任务或核验工具可用性。",
+  "tools": [
+    {
+      "name": "shell",
+      "command": "cat /data/home/hulkzzhou/.codex/skills/paseo-tapd/SKILL.md"
+    }
+  ]
+}
