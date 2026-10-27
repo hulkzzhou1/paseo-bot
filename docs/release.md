@@ -1,5 +1,11 @@
 # Release status
 
+[v0.4.0](https://github.com/hulkzzhou1/paseo-bot/releases/tag/v0.4.0) pins `cf2317274cff3c4a189f3165aa63ece6d2d7f2f4`. The authorized local installation is enabled/running at that exact pin. New Bot conversations receive the user-goal coordination role and specialist-workflow precedence. Existing sessions retain saved instructions; start a new native Agent conversation to adopt the updated role. [Acceptance](verification/issue-11.md). Community [PR #1341](https://github.com/getpaseo/plugins/pull/1341) awaits independent review.
+
+v0.3.1 PR #1339 was approved/merged, and its deployed directory pin was verified on 2026-10-28. Earlier pending-review statements below are historical.
+
+## Historical v0.3.1 release record
+
 v0.3.1 is [released](https://github.com/hulkzzhou1/paseo-bot/releases/tag/v0.3.1) and locally running at `73b81ff03f36bdd3ae75bf4f871daaa8bd9cf2df`. Requirements now allow `>=0.13.2`; dependency pins and runtime code are unchanged. [Acceptance](verification/issue-10.md). Community [PR #1339](https://github.com/getpaseo/plugins/pull/1339) is pending independent review.
 
 v0.3.0 PR #1328 was approved and merged; its exact pin was verified in the deployed directory on 2026-10-28. Earlier pending-review statements below are historical.
