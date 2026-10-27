@@ -14,9 +14,8 @@ import {
   useRpc,
   type PluginScreenProps,
 } from "@getpaseo/plugin/client";
-import { Icon, Modal } from "@getpaseo/plugin/client/ui";
+import { copyText, Icon, Modal } from "@getpaseo/plugin/client/ui";
 import type { PaseoAgent, PaseoProviderSnapshotResult } from "@getpaseo/client";
-import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { bootstrap, configuration } from "../shared/contracts.ts";
 import {
   submitDelivery,
@@ -27,9 +26,7 @@ import {
 import { userError } from "../shared/user-error.ts";
 import { createDeviceState } from "./device-state.ts";
 import { WorkspaceLifecycle } from "./workspace-lifecycle.tsx";
-import { DelegatedTargets } from "./delegated-targets.tsx";
 import { HistoryMenu } from "./history.tsx";
-import { ExecutionItem, RequestCard, StopControl } from "./execution.tsx";
 import { observeConversation } from "./observation.ts";
 import { readDeviceValue, writeDeviceValue } from "./web.ts";
 import type { z } from "zod";
@@ -87,22 +84,14 @@ export function BotScreen({
     values: { id: string; label: string }[];
   } | null>(null);
   const [agent, setAgent] = useState<PaseoAgent | null>(null);
-  const [items, setItems] = useState<
-    { seq: number; item: AgentTimelineItem }[]
-  >([]);
   const [pending, setPending] = useState(false);
-  const [stopped, setStopped] = useState<{
-    host: string;
-    agentId: string;
-  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [initializedHost, setInitializedHost] = useState<string | null>(null);
   const [initializationAttempt, setInitializationAttempt] = useState(0);
   const [observationAttempt, setObservationAttempt] = useState(0);
   const [observationError, setObservationError] = useState<string | null>(null);
-  const messageScroll = useRef<ScrollView>(null);
-  const followMessages = useRef(true);
+  const openedDelivery = useRef<string | null>(null);
   const lifetime = useRef(0);
   const navigation = useRef(0);
   const [observationLoading, setObservationLoading] = useState(false);
@@ -175,9 +164,35 @@ export function BotScreen({
     } catch (reason) {
       setDraft("");
       persistenceError(reason);
+      return false;
     }
     try {
       device.current?.select(id);
+    } catch (reason) {
+      persistenceError(reason);
+      return false;
+    }
+    return true;
+  }
+  function openNative(id: string) {
+    if (!hostNavigation?.openAgent) {
+      setError(
+        "Native chat navigation is unavailable. Update or reopen Paseo before sending.",
+      );
+      return;
+    }
+    try {
+      hostNavigation.openAgent({ agentId: id, serverId: host.id });
+    } catch (reason) {
+      setError(`Could not open native chat. ${userError(reason)}`);
+    }
+  }
+  function openHistory(id: string) {
+    if (!selectConversation(id)) return;
+    try {
+      // Legacy drafts/outboxes must be recoverable before leaving this page.
+      if (!device.current?.draft(id).text && !device.current?.delivery(id))
+        openNative(id);
     } catch (reason) {
       persistenceError(reason);
     }
@@ -211,7 +226,6 @@ export function BotScreen({
     selectedRef.current = null;
     device.current = null;
     setSelected(null);
-    setItems([]);
     setAgent(null);
     setError(null);
     open({})
@@ -232,24 +246,8 @@ export function BotScreen({
           state.installationId,
         );
         try {
-          const remembered = device.current.selection();
-          const owned = state.conversations.find(
-            (entry) => entry.id === remembered,
-          );
-          const found = owned
-            ? await paseo.agents.ref(owned.id).refresh()
-            : null;
-          if (!active) return;
-          const id =
-            found &&
-            found.agent.workspaceId === owned?.workspaceId &&
-            found.agent.labels["paseo-bot"] === state.installationId
-              ? remembered
-              : null;
-          selectedRef.current = id;
-          setSelected(id);
-          setDraft(device.current.draft(id).text);
-          device.current.select(id);
+          // Returning from native chat must leave the Bot entrance accessible.
+          setDraft(device.current.draft(null).text);
         } catch (reason) {
           if (active) persistenceError(reason);
         }
@@ -287,19 +285,11 @@ export function BotScreen({
   ]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: explicit retry replaces a released SDK observation.
   useEffect(() => {
-    setItems([]);
     setAgent(null);
     setObservationError(null);
-    followMessages.current = true;
     if (!selected) return;
     return observeConversation(paseo.agents.ref(selected), {
-      timeline: (page) =>
-        setItems(
-          page.entries.map((entry) => ({
-            seq: entry.seqStart,
-            item: entry.item,
-          })),
-        ),
+      timeline: () => {},
       agent: setAgent,
       error: (reason) => setObservationError(userError(reason)),
       loading: setObservationLoading,
@@ -441,6 +431,10 @@ export function BotScreen({
         } catch (reason) {
           persistenceError(reason);
         }
+        if (!draft && openedDelivery.current !== record.input.requestId) {
+          openedDelivery.current = record.input.requestId;
+          openNative(conversation.id);
+        }
       }
     } catch (reason) {
       persistenceError(reason);
@@ -491,7 +485,6 @@ export function BotScreen({
     if (!context.sentDevice) return;
     busy.current = true;
     setPending(true);
-    setStopped(null);
     setError(null);
     setDeliveryView({
       host: host.id,
@@ -526,6 +519,8 @@ export function BotScreen({
   async function send() {
     if (
       !composerReady ||
+      !hostNavigation?.openAgent ||
+      selected !== null ||
       !online ||
       readOnly ||
       !workspaceWritable ||
@@ -577,21 +572,6 @@ export function BotScreen({
     agent?.status === "initializing" ||
     Boolean(agent?.activeTurn);
   const waiting = Boolean(agent?.pendingPermissions.length);
-  const activeConfig = selected
-    ? conversations.find((conversation) => conversation.id === selected)?.config
-    : config;
-  const activeProvider = catalog.find(
-    (entry) => entry.provider === activeConfig?.provider,
-  );
-  const activeModel = activeProvider?.models?.find(
-    (entry) => entry.id === activeConfig?.model,
-  );
-  const activeThinking = activeModel?.thinkingOptions?.find(
-    (option) => option.id === activeConfig?.thinkingOptionId,
-  );
-  const activeMode = activeProvider?.modes?.find(
-    (mode) => mode.id === activeConfig?.modeId,
-  );
   const composerReady =
     !loading && initializedHost === host.id && device.current !== null;
   const currentDelivery =
@@ -612,6 +592,8 @@ export function BotScreen({
   const workspaceWritable =
     workspaceAccess?.host === host.id && workspaceAccess.writable;
   const disabled =
+    !hostNavigation?.openAgent ||
+    selected !== null ||
     readOnly ||
     !workspaceWritable ||
     !composerReady ||
@@ -695,7 +677,7 @@ export function BotScreen({
         <HistoryMenu
           theme={theme}
           compact={layout.compact}
-          onSelect={selectConversation}
+          onSelect={openHistory}
           onClose={() => setHistory(false)}
           onEntries={mergeHistory}
           onArchived={archivedConversation}
@@ -764,6 +746,7 @@ export function BotScreen({
                       void dispatch(currentDelivery.record);
                   },
                   pending ||
+                    !hostNavigation?.openAgent ||
                     !online ||
                     readOnly ||
                     !workspaceWritable ||
@@ -788,274 +771,189 @@ export function BotScreen({
           )}
         </View>
       )}
-      <ScrollView
-        ref={messageScroll}
-        testID="bot-messages"
-        scrollEventThrottle={16}
-        onScroll={({ nativeEvent }) => {
-          followMessages.current =
-            nativeEvent.contentOffset.y +
-              nativeEvent.layoutMeasurement.height >=
-            nativeEvent.contentSize.height - 64;
-        }}
-        onContentSizeChange={() => {
-          if (followMessages.current)
-            messageScroll.current?.scrollToEnd({ animated: false });
-        }}
-        onLayout={() => {
-          if (followMessages.current)
-            messageScroll.current?.scrollToEnd({ animated: false });
-        }}
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          paddingTop: layout.compact ? 16 : 32,
-          paddingBottom: 24,
-        }}
-        keyboardShouldPersistTaps="handled"
-      >
+      {!hostNavigation?.openAgent && (
+        <Text
+          accessibilityRole="alert"
+          style={{ color: theme.colors.statusDanger }}
+        >
+          Native chat navigation is unavailable. Update or reopen Paseo before
+          sending.
+        </Text>
+      )}
+      <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
         <View
           style={{
             width: "100%",
             maxWidth: 820,
             alignSelf: "center",
-            paddingHorizontal: layout.compact ? 0 : 8,
-            gap: 24,
+            paddingVertical: 32,
+            gap: 12,
           }}
         >
-          {!selected && !loading && (
-            <View style={{ paddingVertical: 32, gap: 8 }}>
-              <Text style={{ ...normal, fontSize: 22, fontWeight: "600" }}>
-                What would you like to do?
+          <Text style={{ ...normal, fontSize: 22, fontWeight: "600" }}>
+            {selected
+              ? "Continue in native chat"
+              : "What would you like to do?"}
+          </Text>
+          <Text style={{ ...muted, fontSize: 14, lineHeight: 20 }}>
+            {selected
+              ? "Paseo's native conversation page handles messages, tools, permissions, model settings and execution controls."
+              : `Start a conversation on ${host.label}. Choose the configuration below; after the first message, native chat opens.`}
+          </Text>
+          {!selected && (
+            <Text style={muted}>
+              Bot conversations share files in their host workspace; each has
+              its own chat context.
+            </Text>
+          )}
+          {selected && draft !== "" && (
+            <View style={{ gap: 8 }}>
+              <Text accessibilityRole="alert" style={muted}>
+                Saved Bot draft. Copy this text before opening native chat and
+                paste it there. It remains saved here; native chat keeps its own
+                draft.
               </Text>
-              <Text style={{ ...muted, fontSize: 14, lineHeight: 20 }}>
-                Start a conversation on {host.label}. Choose the configuration
-                below before sending.
+              <Text selectable style={normal}>
+                {draft}
               </Text>
-              <Text style={{ ...muted, fontSize: 13, lineHeight: 19 }}>
-                Bot conversations share files in their host workspace; each has
-                its own chat context.
-              </Text>
+              {button("Copy saved draft", () => {
+                void copyText(draft).catch((reason) =>
+                  setError(
+                    `Could not copy draft. Select and copy the text above. ${userError(reason)}`,
+                  ),
+                );
+              })}
             </View>
           )}
-          {items.map(({ item, seq }) => (
-            <ExecutionItem
-              key={`${selected}:${seq}`}
-              item={item}
-              streaming={running && seq === items.at(-1)?.seq}
-              theme={theme}
-              layout={layout}
-            />
-          ))}
           {selected &&
-            !readOnly &&
-            agent?.pendingPermissions.map((request) => (
-              <RequestCard
-                key={`${host.id}:${selected}:${request.id}`}
-                request={request}
-                agentId={selected}
-                theme={theme}
-                layout={layout}
-                disabled={unavailable || !online || !workspaceWritable}
-              />
-            ))}
-          {selected && (
-            <DelegatedTargets
-              key={`${host.id}:${selected}`}
-              parentId={selected}
-              timeline={items.map(({ item }) => item)}
-              hostId={host.id}
-              theme={theme}
-              navigation={hostNavigation}
-            />
-          )}
+            button(
+              "Open native chat",
+              () => openNative(selected),
+              !hostNavigation?.openAgent || unresolved || pending,
+            )}
         </View>
       </ScrollView>
-      {readOnly && (
-        <Text
-          accessibilityRole="alert"
-          style={{ ...muted, fontSize: 13, paddingBottom: 8 }}
-        >
-          Archived conversation. Read-only. Use New conversation to continue
-          with context you supply yourself.
-        </Text>
-      )}
-      {unavailable && !observationError && (
-        <Text style={{ ...muted, fontSize: 13, paddingBottom: 8 }}>
-          Loading conversation…
-        </Text>
-      )}
-      {stopped?.host === host.id &&
-        stopped.agentId === selected &&
-        !running && (
-          <Text
-            accessibilityRole="alert"
-            style={{ ...muted, fontSize: 13, paddingBottom: 8 }}
-          >
-            Stopped. You can send your draft.
-          </Text>
-        )}
-      {waiting && !running && (
-        <Text
-          accessibilityRole="alert"
-          style={{ ...muted, fontSize: 13, paddingBottom: 8 }}
-        >
-          Waiting for your response. Your draft stays editable.
-        </Text>
-      )}
-      {running && (
-        <Text
-          accessibilityRole="alert"
-          style={{ ...muted, fontSize: 13, paddingBottom: 8 }}
-        >
-          Running. You can edit a draft while this turn finishes.
-        </Text>
-      )}
-      <View
-        style={{
-          width: "100%",
-          maxWidth: 820,
-          alignSelf: "center",
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-          borderRadius: 18,
-          backgroundColor: theme.colors.surface1,
-          padding: 8,
-          gap: 4,
-        }}
-      >
-        <TextInput
-          ref={input}
-          accessibilityLabel="Message Paseo Bot"
-          value={draft}
-          editable={composerReady && !readOnly}
-          onChangeText={editDraft}
-          multiline
-          placeholder="Message Paseo Bot…"
-          placeholderTextColor={theme.colors.foregroundMuted}
-          style={{
-            ...normal,
-            fontSize: 16,
-            lineHeight: 22,
-            minHeight: 60,
-            maxHeight: 180,
-            paddingHorizontal: 8,
-            paddingTop: 8,
-            paddingBottom: 8,
-          }}
-        />
+      {!selected && (
         <View
           style={{
-            flexDirection: "row",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
+            width: "100%",
+            maxWidth: 820,
+            alignSelf: "center",
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            borderRadius: 18,
+            backgroundColor: theme.colors.surface1,
+            padding: 8,
             gap: 4,
           }}
         >
+          <TextInput
+            ref={input}
+            accessibilityLabel="Message Paseo Bot"
+            value={draft}
+            editable={composerReady && !readOnly}
+            onChangeText={editDraft}
+            multiline
+            placeholder="Message Paseo Bot…"
+            placeholderTextColor={theme.colors.foregroundMuted}
+            style={{
+              ...normal,
+              fontSize: 16,
+              lineHeight: 22,
+              minHeight: 60,
+              maxHeight: 180,
+              paddingHorizontal: 8,
+              paddingTop: 8,
+              paddingBottom: 8,
+            }}
+          />
           <View
             style={{
-              flex: 1,
               flexDirection: "row",
-              flexWrap: "wrap",
-              alignItems: "center",
-              gap: 0,
+              alignItems: "flex-end",
+              justifyContent: "space-between",
+              gap: 4,
             }}
           >
-            {selected ? (
-              <Text
-                numberOfLines={1}
-                style={{
-                  ...muted,
-                  fontSize: 13,
-                  paddingHorizontal: 8,
-                  paddingVertical: 12,
-                  flexShrink: 1,
-                }}
-              >
-                {[
-                  activeModel?.label ?? activeConfig?.model,
-                  activeThinking?.label,
-                  activeMode?.label,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </Text>
-            ) : (
-              <>
-                {options(
-                  "Provider",
-                  catalog
-                    .filter(
-                      (entry) => entry.enabled && entry.status === "ready",
-                    )
-                    .map((entry) => ({
-                      id: entry.provider,
-                      label: entry.label ?? entry.provider,
-                    })),
-                  "provider",
-                )}
-                {provider &&
-                  options(
-                    "Model",
-                    provider.models?.filter(
-                      (model) => model.isSelectable !== false,
-                    ) ?? [],
-                    "model",
-                  )}
-                {model?.thinkingOptions?.length
-                  ? options(
-                      "Thinking",
-                      model.thinkingOptions,
-                      "thinkingOptionId",
-                    )
-                  : null}
-                {provider &&
-                  options("Permission mode", provider.modes ?? [], "modeId")}
-              </>
-            )}
-          </View>
-          {running && selected && !readOnly ? (
-            <StopControl
-              key={`${host.id}:${selected}`}
-              agentId={selected}
-              theme={theme}
-              disabled={unavailable || !online || !workspaceWritable}
-              onStopped={() => setStopped({ host: host.id, agentId: selected })}
-            />
-          ) : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={pending ? "Sending…" : "Send"}
-              accessibilityState={{ disabled }}
-              disabled={disabled}
-              onPress={() => void send()}
+            <View
               style={{
-                width: 44,
-                height: 44,
+                flex: 1,
+                flexDirection: "row",
+                flexWrap: "wrap",
                 alignItems: "center",
-                justifyContent: "center",
-                opacity: disabled ? 0.45 : 1,
+                gap: 0,
               }}
             >
-              <View
+              {
+                <>
+                  {options(
+                    "Provider",
+                    catalog
+                      .filter(
+                        (entry) => entry.enabled && entry.status === "ready",
+                      )
+                      .map((entry) => ({
+                        id: entry.provider,
+                        label: entry.label ?? entry.provider,
+                      })),
+                    "provider",
+                  )}
+                  {provider &&
+                    options(
+                      "Model",
+                      provider.models?.filter(
+                        (model) => model.isSelectable !== false,
+                      ) ?? [],
+                      "model",
+                    )}
+                  {model?.thinkingOptions?.length
+                    ? options(
+                        "Thinking",
+                        model.thinkingOptions,
+                        "thinkingOptionId",
+                      )
+                    : null}
+                  {provider &&
+                    options("Permission mode", provider.modes ?? [], "modeId")}
+                </>
+              }
+            </View>
+            {
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={pending ? "Sending…" : "Send"}
+                accessibilityState={{ disabled }}
+                disabled={disabled}
+                onPress={() => void send()}
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 16,
-                  backgroundColor: theme.colors.foreground,
+                  width: 44,
+                  height: 44,
                   alignItems: "center",
                   justifyContent: "center",
+                  opacity: disabled ? 0.45 : 1,
                 }}
               >
-                <Icon
-                  name={pending ? "LoaderCircle" : "ArrowUp"}
-                  size={18}
-                  color={theme.colors.surface0}
-                />
-              </View>
-            </Pressable>
-          )}
+                <View
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    backgroundColor: theme.colors.foreground,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Icon
+                    name={pending ? "LoaderCircle" : "ArrowUp"}
+                    size={18}
+                    color={theme.colors.surface0}
+                  />
+                </View>
+              </Pressable>
+            }
+          </View>
         </View>
-      </View>
+      )}
       <Modal
         open={picker !== null}
         title={
