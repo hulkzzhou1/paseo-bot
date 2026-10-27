@@ -14,7 +14,7 @@ Desktop and compact mobile browsers are the release target. Native iOS/Android d
 
 ## Conversations and delegated work
 
-Device-local browser storage keeps the launcher's new-conversation configuration, draft and pending first-send identity. An unknown first send is checked before an explicit retry; navigation failures do not resend it. Existing conversation drafts and pending sends from older Bot versions remain recoverable in the launcher before opening the native page. They are not automatically pasted into or merged with native drafts.
+Device-local browser storage keeps the launcher's new-conversation configuration, draft and pending first-send identity. An unknown first send is checked before an explicit retry; navigation failures do not resend it. The old custom conversation interface is removed. Its conversation drafts are not migrated into native chat; history opens the native page directly.
 
 Once opened, the native conversation page owns subsequent messages, configuration changes, draft persistence, running-send behavior, reconnect handling and message actions. The Bot no longer imposes its earlier custom busy-send or read-only chat rules. Returning to the launcher stays on the launcher rather than immediately redirecting to the last conversation.
 Rename conversations, archive them after execution is confirmed stopped, and open archived history using the host’s native behavior. Archiving the Bot workspace requires an explicit manual rebuild before further Bot work. Rebuild creates a new workspace identity while preserving old history and shared files.
