@@ -4,7 +4,7 @@ Accepted for the standalone Paseo Bot plugin. The workspace ownership decision r
 
 Paseo Bot will use a global plugin page and a dedicated directory-backed background workspace at `~/.paseo/bot/` on its daemon host. Each conversation is an independent Agent session in that workspace. This accepts the existing project/workspace ownership model so the plugin can reuse session persistence, recovery, and management tools without adding a workspace-free agent type to core. The daemon may create the directory's project record automatically.
 
-The page has New conversation and History controls in its own toolbar. It has no floating entry point. The initial version manages only its own host; each host has separate conversations and history. The Bot can coordinate work and execute explicitly requested ordinary tasks through authorized tools.
+The page has New conversation and History controls in its own toolbar. It has no floating entry point. The initial version manages only its own host; each host has separate conversations and history. The Bot owns ongoing coordination toward user goals; project Agents own concrete execution. The confirmed role clarification in the specification supersedes earlier ordinary-task execution wording.
 
 New conversations allow provider, model, thinking, and mode selection, remembering the previous selection. The first selection is explicit, existing conversations keep their own configuration, and approval bypass is not enabled by default. Initial chat scope includes text and Markdown, streaming, tool execution status, permission requests, provider questions, and Stop. Attachments, voice, and conversation search are deferred.
 

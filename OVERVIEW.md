@@ -1,6 +1,6 @@
 # Paseo Bot
 
-Paseo Bot adds a global management conversation launcher for one connected daemon host. Start independent conversations, switch through persistent history, and ask your chosen Provider to inspect and manage Paseo work or perform an explicitly assigned ordinary task.
+Paseo Bot is your assistant for understanding goals and organizing Agents to carry them forward on one connected daemon host. Discuss ideas, develop shared understanding and coordinate concrete work through project Agents. Bot remains responsible for coordination after delegation; project Agents own execution.
 
 Each Bot conversation is a normal durable Paseo Agent in a dedicated background workspace. Selecting Paseo Bot opens that workspace directly. On its first visit, choose Agent in the native New tab page. Native chat owns initial configuration and first send; no Agent is created merely by opening the workspace. The host provides model controls, streamed Markdown, grouped tool calls, permission requests, questions, Stop and running feedback. Use the native new-tab controls for another conversation and the Bot history button in the workspace header for the existing Bot history list.
 
@@ -28,4 +28,4 @@ The daemon's ordinary `PASEO_HOME/bot` directory, normally `~/.paseo/bot`, holds
 
 Conversation prompts, tool inputs/results and files accessed by authorized tools can be sent to the selected external Provider under its own data policy. Local history does not imply that conversation data stays on the daemon. This is a trusted plugin running with the daemon user's privileges. Stop and rename use the supported local CLI with the exact selected daemon home; archived-workspace inspection uses a read-only public SDK helper and local daemon authentication without exposing credentials. The plugin does not download software at runtime.
 
-Native sessions in the dedicated Bot directory receive the management guidance alongside existing profile instructions. This directory-scoped context does not grant history ownership or change model, mode, tools or approval settings.
+New native sessions in the dedicated Bot directory receive this role and management guidance alongside existing profile instructions. Existing conversations retain the instructions saved when they were created; start a new native Agent conversation to adopt an updated role. Plugin or Agent reload does not rewrite those saved instructions. This directory-scoped context does not grant history ownership or change model, mode, tools or approval settings.
