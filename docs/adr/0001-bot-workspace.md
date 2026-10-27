@@ -1,6 +1,6 @@
 # Paseo Bot uses a dedicated workspace behind a plugin page
 
-Accepted for the standalone Paseo Bot plugin; not implemented or an upstream commitment.
+Accepted for the standalone Paseo Bot plugin. The workspace ownership decision remains current. The original interaction decisions below are historical: [specification decision 17](../spec.md) supersedes custom chat, remembered conversation selection, per-conversation drafts, busy-send restrictions, and archived read-only guarantees in v0.2.0. The Bot retains new-conversation creation and history management; existing conversations open in native chat.
 
 Paseo Bot will use a global plugin page and a dedicated directory-backed background workspace at `~/.paseo/bot/` on its daemon host. Each conversation is an independent Agent session in that workspace. This accepts the existing project/workspace ownership model so the plugin can reuse session persistence, recovery, and management tools without adding a workspace-free agent type to core. The daemon may create the directory's project record automatically.
 
@@ -22,4 +22,4 @@ Archived conversations are read-only. Continuing their work requires a new conve
 
 Bot history contains only conversations created through the Bot page. Delegated agents stay in their target business workspaces, with navigation links from the Bot conversation. New business workspaces are ordinarily visible; only the Bot workspace is background. Clarify ambiguous targets rather than infer them from the page being viewed.
 
-The requirements interview is complete. These decisions await an implementation specification and runtime validation.
+Implementation and validation evidence are tracked in the specification and verification records.
