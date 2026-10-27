@@ -123,6 +123,7 @@ test("native creation retains system choices and receives Bot guidance without e
     assert.match(actual.systemPrompt, /after delegation/i);
     assert.match(actual.systemPrompt, /applicable specialist.*dispatch/i);
     assert.match(actual.systemPrompt, /project-specific discussion.*findings/i);
+    assert.match(actual.systemPrompt, /new matter.*fresh project Agent/i);
     assert.match(
       actual.systemPrompt,
       /Consultation does not authorize project changes/i,

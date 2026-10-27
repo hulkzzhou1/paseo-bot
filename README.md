@@ -2,7 +2,7 @@
 
 A standalone Paseo plugin that opens a dedicated host-local background workspace directly in Paseo's native interface. Native chat handles initial configuration, system preferences, first send and subsequent conversation interaction. The workspace header retains Bot history, rename/archive and existing conversations.
 
-Version **0.4.1** grounds new Bot conversations in project Agent findings, including consultation before implementation. Bot carries goals forward through project Agents and remains responsible for coordination after delegation. Requires Paseo **0.13.2 and later**, including newer betas. The native-workspace implementation was runtime-tested on 0.13.2; future API compatibility is not guaranteed. On the first workspace visit, choose **Agent** in the native New tab page. See [release status](docs/release.md), [OVERVIEW](OVERVIEW.md) and [compatibility](docs/compatibility.md) for verified and published revisions.
+Version **0.4.2** grounds new Bot conversations in project Agent findings, including consultation before implementation. Bot carries goals forward through project Agents and remains responsible for coordination after delegation. Requires Paseo **0.13.2 and later**, including newer betas. The native-workspace implementation was runtime-tested on 0.13.2; future API compatibility is not guaranteed. On the first workspace visit, choose **Agent** in the native New tab page. See [release status](docs/release.md), [OVERVIEW](OVERVIEW.md) and [compatibility](docs/compatibility.md) for verified and published revisions.
 
 - [Specification](docs/spec.md) / [GitHub specification #1](https://github.com/hulkzzhou1/paseo-bot/issues/1)
 - [Architecture decision](docs/adr/0001-bot-workspace.md) / [Glossary](docs/glossary.md)
