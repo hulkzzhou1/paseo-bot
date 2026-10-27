@@ -1,0 +1,16 @@
+{
+  "revision": "d1f312260230fe42cd086ae570a006c3085e9e81",
+  "gitHead": "d1f312260230fe42cd086ae570a006c3085e9e81",
+  "installationCurrentRevision": "d1f312260230fe42cd086ae570a006c3085e9e81",
+  "pluginStatus": "running",
+  "source": "https://github.com/hulkzzhou1/paseo-bot#d1f312260230fe42cd086ae570a006c3085e9e81",
+  "port": 36059,
+  "serverId": "srv_rON3kVfXy_Pj",
+  "agentId": "51e2b93f-fff9-4970-a932-92750982a6e1",
+  "workspaceId": "wks_e3cc7aca4d4d8006",
+  "userMessages": 1,
+  "assistantReply": "NATIVE_GIT_INSTALL_OK",
+  "toolCalls": 0,
+  "background": true,
+  "daemonVersion": "0.13.2"
+}

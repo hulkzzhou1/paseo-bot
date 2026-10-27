@@ -1,6 +1,6 @@
 # Release status
 
-Version 0.2.0 replaces custom conversation UI with native Agent navigation while retaining Bot history and new-conversation setup. Implementation and browser acceptance are complete; exact remote Git installation, local update and registry revision review are tracked separately below as they occur. See [migration evidence](verification/issue-8.md).
+Version 0.2.0 replaces custom conversation UI with native Agent navigation while retaining Bot history and new-conversation setup. [v0.2.0 is released](https://github.com/hulkzzhou1/paseo-bot/releases/tag/v0.2.0) at `d1f312260230fe42cd086ae570a006c3085e9e81`. A fresh remote exact-SHA installation passed and the user-authorized local installation is running at that same revision, without daemon restart. [Registry update PR #1319](https://github.com/getpaseo/plugins/pull/1319), linked to manual update request #1318, awaits independent review. The deployed directory still pins v0.1.0; publication of the v0.2.0 Git release is distinct from its directory listing. See [migration evidence](verification/issue-8.md).
 
 Version 0.1.0 is already listed: [registry PR #1250](https://github.com/getpaseo/plugins/pull/1250) was approved and merged, and the deployed record was verified at `https://plugins.paseo.sh/plugins/hulkzzhou1/paseo-bot.json`. Its pin is `ffedf6a953ad25dae53f3f5903a2e5fcafb75b72`.
 
