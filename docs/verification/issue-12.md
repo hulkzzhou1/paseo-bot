@@ -28,3 +28,13 @@ Server Browser displayed the same native discussion at 1120×900 and 390×844; c
 The root temporary filesystem was full before implementation. Four task-owned stopped Git-install fixtures were moved intact to `/data/home/hulkzzhou/.cache/paseo-bot/acceptance-archive`; their evidence was retained. New worktree and test temporary homes use the data volume. No unrelated user data was removed.
 
 This acceptance uses a user-identified existing project Agent. It does not establish autonomous project discovery or every future model response. Missing/ambiguous targets retain the existing clarification rule. The role is guidance, not a permission sandbox. Native mobile/Electron, beta App runtime, other real Providers and TAPD dispatch integration remain untested. Existing conversations keep their saved role; start a new native Agent conversation in Bot for these instructions. Production daemon was not restarted.
+
+## Matter continuity clarification
+
+The user clarified Agent selection after the initial 0.4.1 candidate: a new independent matter should use a fresh project Agent; continue an existing Agent only when it already carries relevant groundwork for that same matter. Shared project membership alone is not enough. This supersedes the earlier general preference for an existing responsible Agent. Runtime follow-up `73ba2d23a723cf1028630154c002a8224edefe3d` was independently re-reviewed with zero Standards/Spec findings.
+
+A second focused RED/GREEN cycle verified the new selection rule reaches the saved prompt. Final full suite: 34/34, exit 0, 48.9 seconds. Typecheck/lint/format/whitespace passed. Root package version is 0.4.2; dependency pins remain unchanged.
+
+After reloading only the isolated plugin, a new Bot conversation received an independent export-encryption consultation. The user explicitly identified the old Agent's PDF discussion as unrelated groundwork. Bot created exactly one fresh project Agent in the existing visible project workspace, retained normal parent/completion semantics, and did not prompt the prior PDF Agent. The new Agent returned source-grounded findings; Bot used them to discuss reusable filtering, missing encryption/identity/delivery evidence and open questions. Both project file hashes remained unchanged. [Actual new-matter result](new-matter-result.json). The final Bot turn was awaited and re-read after an initial evidence read caught the response still streaming; no task was resent.
+
+The original consultation evidence at `215eb4d` demonstrates reuse when the user supplies an already-informed responsible Agent. The separate `73ba2d2` run verifies the latest fresh-Agent selection rule. Neither evidence is a claim about every future model response.
