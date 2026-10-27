@@ -19,6 +19,7 @@ export const bootstrap = defineRpc({
     installationId: z.string(),
     directory: z.string(),
     workspaceId: z.string().nullable(),
+    workspaceIds: z.array(z.string()),
     conversations: z.array(conversation),
   }),
 });
@@ -31,7 +32,7 @@ export const createConversation = defineRpc({
   }),
   output: conversation,
 });
-export const historyConversation = conversation.extend({
+export const historyConversation = conversation.omit({ config: true }).extend({
   title: z.string(),
   status: z.string(),
   updatedAt: z.string(),
@@ -53,4 +54,10 @@ export const renameConversation = defineRpc({
   name: "rename-conversation",
   input: z.object({ id: z.uuid(), title: z.string().trim().min(1).max(200) }),
   output: z.object({ id: z.string(), title: z.string() }),
+});
+
+export const openWorkspace = defineRpc({
+  name: "open-workspace",
+  input: z.object({}),
+  output: z.object({ workspaceId: z.string() }),
 });

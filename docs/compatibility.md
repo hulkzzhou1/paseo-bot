@@ -1,3 +1,5 @@
+> v0.3.0 uses the public native workspace navigation and host-owned creation/preferences/drafts. Bot history includes native root sessions in explicitly opened workspace generations. Earlier custom first-send and device-storage evidence below is historical. Native iOS/Android and Electron remain untested.
+
 # Compatibility evidence
 
 Version 0.2.0 uses public `PluginScreenProps.navigation.openAgent({agentId, serverId})` for all existing conversations. The earlier custom-chat execution/delivery evidence below is historical; native chat now owns later sends, configuration, permissions, tools, drafts and archive behavior. Bot retains initial creation/delivery safety, history and workspace lifecycle. Old custom conversation drafts are not migrated. The UI capability boundary and change rationale are in [the audit](native-chat-audit.md).

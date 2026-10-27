@@ -1,6 +1,7 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import {
   bootstrap,
+  openWorkspace,
   createConversation,
   listConversations,
   renameConversation,
@@ -17,6 +18,11 @@ import { stopConversation, respondConversation } from "./shared/execution.ts";
 export default function contribute(server: PluginServerContext) {
   const bot = createBot();
   const delivery = createDelivery(bot);
+  const unguide = server.before("agent.create", async ({ request }) => ({
+    ...request,
+    config: await bot.guideNative(request.config),
+  }));
+  server.handle(openWorkspace, (_, { paseo }) => bot.openWorkspace(paseo));
   server.handle(submitDelivery, (input, { paseo }) =>
     delivery.submit(paseo, input),
   );
@@ -51,5 +57,6 @@ export default function contribute(server: PluginServerContext) {
   );
   return () => {
     unhook();
+    unguide();
   };
 }

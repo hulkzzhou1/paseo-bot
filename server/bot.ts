@@ -1,3 +1,4 @@
+import type { AgentSessionConfig } from "@getpaseo/protocol/agent-types";
 import { randomUUID, createHash } from "node:crypto";
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -11,7 +12,7 @@ import {
   type respondConversation,
 } from "../shared/execution.ts";
 import type { RpcInput } from "@getpaseo/plugin";
-import type { PaseoApi } from "@getpaseo/client";
+import type { PaseoAgent, PaseoApi } from "@getpaseo/client";
 import { z } from "zod";
 import { configuration } from "../shared/contracts.ts";
 
@@ -24,6 +25,7 @@ const record = z.object({
 const stateSchema = z.object({
   installationId: z.string(),
   workspaceId: z.string().nullable(),
+  nativeWorkspaceIds: z.array(z.string()).default([]),
   requests: z.record(z.string(), record),
   oldWorkspaceIds: z.array(z.string()).default([]),
   rebuilds: z.record(z.string(), z.string()).default({}),
@@ -52,6 +54,7 @@ export function createBot() {
       const state = {
         installationId: randomUUID(),
         workspaceId: null,
+        nativeWorkspaceIds: [],
         requests: {},
         oldWorkspaceIds: [],
         rebuilds: {},
@@ -71,24 +74,36 @@ export function createBot() {
     queue = result.catch(() => {});
     return result;
   }
+  function nativeOwned(state: z.infer<typeof stateSchema>, agent: PaseoAgent) {
+    return Boolean(
+      agent.workspaceId &&
+        state.nativeWorkspaceIds.includes(agent.workspaceId) &&
+        !agent.internal &&
+        !agent.labels["paseo.parent-agent-id"]?.trim(),
+    );
+  }
   async function owned(paseo: PaseoApi, id: string, { mutable = true } = {}) {
     const state = await serial(read);
     const record = Object.values(state.requests).find(
       (entry) => entry.id === id,
     );
-    if (!record) throw new Error("Not an owned Bot conversation");
     const result = await paseo.agents.ref(id).refresh();
     if (
       !result ||
-      result.agent.workspaceId !== record.workspaceId ||
-      result.agent.labels["paseo-bot"] !== state.installationId
+      !result.agent.workspaceId ||
+      !(
+        nativeOwned(state, result.agent) ||
+        (record &&
+          result.agent.workspaceId === record.workspaceId &&
+          result.agent.labels["paseo-bot"] === state.installationId)
+      )
     )
       throw new Error("Not an owned Bot conversation");
     if (mutable && result.agent.archivedAt)
       throw new Error("Archived conversations are read-only");
     if (mutable) {
       const workspace = await paseo.workspaces
-        .ref(record.workspaceId)
+        .ref(result.agent.workspaceId)
         .refresh();
       if (!workspace || workspace.archivingAt)
         throw new Error(
@@ -129,6 +144,50 @@ export function createBot() {
     return { workspaceId: state.workspaceId, state: status };
   }
   return {
+    async guideNative(config: AgentSessionConfig) {
+      if (
+        config.cwd !== directory ||
+        config.internal ||
+        config.systemPrompt?.includes(managementPrompt)
+      )
+        return config;
+      // The creation hook must not queue behind the create operation awaiting it.
+      const state = await read();
+      if (
+        !state.workspaceId ||
+        !state.nativeWorkspaceIds.includes(state.workspaceId)
+      )
+        return config;
+      return {
+        ...config,
+        systemPrompt: [config.systemPrompt, managementPrompt]
+          .filter(Boolean)
+          .join("\n\n"),
+      };
+    },
+    openWorkspace: (paseo: PaseoApi) =>
+      serial(async () => {
+        const state = await read();
+        if (state.workspaceId) {
+          if ((await inspect(paseo, state)).state !== "ready")
+            throw new Error(
+              "Bot workspace is archived or unavailable; rebuild must be requested explicitly.",
+            );
+        } else {
+          const workspace = await paseo.workspaces.create({
+            source: { kind: "directory", path: directory },
+            background: true,
+            idempotencyKey: `paseo-bot:${state.installationId}`,
+          });
+          state.workspaceId = workspace.id;
+          await save(state);
+        }
+        if (!state.nativeWorkspaceIds.includes(state.workspaceId)) {
+          state.nativeWorkspaceIds.push(state.workspaceId);
+          await save(state);
+        }
+        return { workspaceId: state.workspaceId };
+      }),
     owned,
     findRequest: (id: string) =>
       serial(async () => (await read()).requests[id] ?? null),
@@ -293,7 +352,7 @@ export function createBot() {
     ) =>
       serial(async () => {
         const state = await read();
-        const entries = [];
+        const snapshots = new Map<string, PaseoAgent>();
         for (const record of Object.values(state.requests)) {
           const found = await paseo.agents.ref(record.id).refresh();
           const agent = found?.agent;
@@ -304,18 +363,45 @@ export function createBot() {
             agent.labels["paseo-bot"] !== state.installationId
           )
             continue;
-          entries.push({
-            ...record,
-            title: agent.title ?? "Untitled conversation",
-            updatedAt: agent.updatedAt,
-            status: agent.pendingPermissions.length
-              ? "waiting for confirmation"
-              : agent.activeTurn
-                ? "running"
-                : agent.status,
-            archivedAt: agent.archivedAt ?? null,
-          });
+          snapshots.set(agent.id, agent);
         }
+        if (state.nativeWorkspaceIds.length) {
+          let cursor: string | undefined;
+          do {
+            const page = await paseo.agents.list({
+              filter: { includeArchived: true, includeBackground: true },
+              page: { limit: 100, cursor },
+            });
+            for (const { agent } of page.entries) {
+              if (
+                nativeOwned(state, agent) &&
+                Boolean(agent.archivedAt) === Boolean(input.archived)
+              )
+                snapshots.set(agent.id, agent);
+            }
+            cursor = page.pageInfo.hasMore
+              ? (page.pageInfo.nextCursor ?? undefined)
+              : undefined;
+          } while (cursor);
+        }
+        const entries = [...snapshots.values()].flatMap((agent) =>
+          agent.workspaceId
+            ? [
+                {
+                  id: agent.id,
+                  workspaceId: agent.workspaceId,
+                  title: agent.title ?? "Untitled conversation",
+                  updatedAt: agent.updatedAt,
+                  status: agent.pendingPermissions.length
+                    ? "waiting for confirmation"
+                    : agent.activeTurn
+                      ? "running"
+                      : agent.status,
+                  archivedAt: agent.archivedAt ?? null,
+                },
+              ]
+            : [],
+        );
         entries.sort(
           (a, b) =>
             b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id),
@@ -354,6 +440,15 @@ export function createBot() {
         return {
           ...state,
           directory,
+          workspaceIds: [
+            ...new Set(
+              [
+                state.workspaceId,
+                ...state.oldWorkspaceIds,
+                ...state.nativeWorkspaceIds,
+              ].filter((id): id is string => Boolean(id)),
+            ),
+          ],
           conversations: Object.values(state.requests),
         };
       }),
