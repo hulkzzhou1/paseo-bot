@@ -1,0 +1,11 @@
+{
+  "appDaemonSdk": "0.13.2",
+  "agentId": "5a38d3e7-fe3b-4a58-bfff-c7f37f46e124",
+  "workspaceId": "wks_85b9dc16baee857b",
+  "historyEntries": 1,
+  "userMessages": 1,
+  "toolCalls": 1,
+  "assistantReply": "NATIVE_WORKSPACE_DONE",
+  "background": true,
+  "nativePreferencesRestored": true
+}

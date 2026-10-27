@@ -35,21 +35,23 @@ export default function contribute(client: PluginClientContext) {
       }),
     );
   };
-  void client
-    .rpc(bootstrap, {})
-    .then((state) => {
-      for (const id of state.workspaceIds) registerHistory(id);
-    })
-    .catch(() => {});
+  const reconcileHistory = () =>
+    client
+      .rpc(bootstrap, {})
+      .then((state) => {
+        for (const id of state.workspaceIds) registerHistory(id);
+      })
+      .catch(() => {});
+  void reconcileHistory();
+  const onOpened = (workspaceId: string) => {
+    registerHistory(workspaceId);
+    void reconcileHistory();
+  };
   client.addScreen({
     id: "bot",
     title: "Paseo Bot",
     Component: (props) => (
-      <BotScreen
-        {...props}
-        onOpened={registerHistory}
-        onHistory={openHistory}
-      />
+      <BotScreen {...props} onOpened={onOpened} onHistory={openHistory} />
     ),
   });
   client.addScreen({

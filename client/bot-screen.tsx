@@ -68,11 +68,13 @@ export function BotScreen({
           >
             <Text style={{ color: theme.colors.foreground }}>Bot history</Text>
           </Pressable>
-          <WorkspaceLifecycle
-            key={host.id}
-            theme={theme}
-            onChange={ignoreStatus}
-          />
+          {navigation?.openWorkspace && (
+            <WorkspaceLifecycle
+              key={host.id}
+              theme={theme}
+              onChange={ignoreStatus}
+            />
+          )}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Retry opening Paseo Bot"

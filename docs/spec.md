@@ -1,6 +1,6 @@
 # Paseo Bot：单主机管理助手插件规格
 
-状态：完整插件已实现并完成浏览器、隔离 daemon 与真实 Provider 验收；Git v0.1.0 已发布。官方目录申请 getpaseo/plugins#1246 已通过社区允许的手工 PR getpaseo/plugins#1250 提交，等待独立审核，尚未上架。完整要求和已确认的平台范围不变。
+状态：v0.1.0 与 v0.2.0 的目录 PR 已合并；v0.3.0 正按决策 18 迁移原生创建入口，验收见 docs/verification/issue-9.md。下文保留初始规格；决策 17、18 优先于早期自定义页面、配置与草稿交互描述。
 
 ## Problem Statement
 

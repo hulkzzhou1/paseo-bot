@@ -7,8 +7,8 @@
   },
   "build": [["npm", "ci", "--omit=dev", "--ignore-scripts"]],
   "media": [
-    "docs/verification/images/native-migration/native-v020-real-desktop.png",
-    "docs/verification/images/native-migration/native-v020-real-mobile.png",
-    "docs/verification/images/native-migration/native-v020-history-mobile.png"
+    "docs/verification/images/native-workspace/native-v030-chat-desktop.png",
+    "docs/verification/images/native-workspace/native-v030-chat-mobile.png",
+    "docs/verification/images/native-workspace/native-v030-history-mobile.png"
   ]
 }
