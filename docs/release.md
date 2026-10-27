@@ -8,8 +8,8 @@ Public Git **v0.1.0 is released**: [GitHub release](https://github.com/hulkzzhou
 | Final Standards / Spec | 0 findings each at the immutable revision |
 | Public fixed Git tag/release | Published, v0.1.0 |
 | Fresh remote exact-SHA installation | Passed; Git HEAD and public installation revision match |
-| Official registry submission | [#1246 opened](https://github.com/getpaseo/plugins/issues/1246) with immutable source; required label is missing |
-| Registry review / deployed listing | Intake blocked by label permissions; no review PR, not listed |
+| Official registry submission | [Application #1246](https://github.com/getpaseo/plugins/issues/1246), linked by [manual PR #1250](https://github.com/getpaseo/plugins/pull/1250) |
+| Registry review / deployed listing | PR open for independent review; not listed |
 
 ## Exact remote artifact acceptance
 
@@ -35,9 +35,13 @@ Latest stable remained 0.13.2 at publication. Full tests passed 27/27, with type
 
 The official submission template, REVIEW, BOTS, PROTOCOL and Source parser were re-read at registry revision `4fd2379bab088979a65de1a566a2c1c8138a560a`, 2026-10-26 22:13 UTC, and were unchanged from the prior verified policy. Submission, review, merge and actual deployed listing remain separate states. Only the deployed registry detail/index and visible directory establish listing.
 
-## External intake blocker
+## Community review PR
 
-Although author creation requested `--label submission`, the actual issue has no labels. Explicit `gh issue edit 1246 --repo getpaseo/plugins --add-label submission` failed: GraphQL reports that `hulkzzhou1` lacks permission for `AddLabelsToLabelable`. The [Submission workflow run](https://github.com/getpaseo/plugins/actions/runs/40411453925) skipped its job; the current workflow requires this label for issue events. Scheduled recovery also selects only issues already bearing `submission`. No review PR exists, and the deployed registry detail returns HTTP 404. The server browser is signed out of GitHub, so an authenticated official-form submission is not currently available. A [maintainer label request](https://github.com/getpaseo/plugins/issues/1246#issuecomment-6428756632) was posted to the single existing application; alternatively the user can authenticate the official form. No duplicate application or upstream privilege/configuration change is attempted. This is an external intake blocker, not pending successful review or listing.
+[PR #1250](https://github.com/getpaseo/plugins/pull/1250) proposes the single record `plugins/hulkzzhou1/paseo-bot.json`, generated with the official `scripts/add.ts` at upstream revision `4fd2379bab088979a65de1a566a2c1c8138a560a`. It pins the same reviewed and installed release commit and links application #1246. No registry machinery or policy is changed. `submittedAt` preserves the issue creation time; generated review/publication timestamps are proposal values for the reviewer to finalize, not a claim of approval.
+
+The initial issue intake was skipped because the external account could not add `submission`. Treating that as the final blocker was incomplete: current BOTS.md explicitly accepts hand-edited PRs. Following the user's direction, the author submitted the complete proposed record through this supported path without requiring browser authentication or another application.
+
+Local trusted registry validation passed: `npm test` **172/172**, `node scripts/validate.ts --online --changed` **391 records well-formed, 1 changed record matches its pin**, and `git diff --check origin/main...HEAD`, all exit 0. Registry proposal commit: `457059d`. No plugin code ran during registry proposal preparation/validation. Earlier isolated author runtime acceptance is distinct from the community's pending independent artifact review. GitHub's Validate workflow started on the PR; approval, merge and deployed listing remain pending.
 
 ## Acceptance environment cleanup
 
