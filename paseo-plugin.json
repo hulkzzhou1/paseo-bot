@@ -7,9 +7,8 @@
   },
   "build": [["npm", "ci", "--omit=dev", "--ignore-scripts"]],
   "media": [
-    "docs/verification/images/issue-7-delegation-desktop.png",
-    "docs/verification/images/issue-7-delegation-mobile.png",
-    "docs/verification/images/issue-3-permission-desktop.png",
-    "docs/verification/images/issue-3-question-mobile.png"
+    "docs/verification/images/native-migration/native-v020-real-desktop.png",
+    "docs/verification/images/native-migration/native-v020-real-mobile.png",
+    "docs/verification/images/native-migration/native-v020-history-mobile.png"
   ]
 }

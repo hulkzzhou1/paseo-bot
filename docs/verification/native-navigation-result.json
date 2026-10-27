@@ -1,0 +1,24 @@
+{
+  "agentIds": [
+    "9cc10b5a-4a6d-4915-bf59-74f3a8c24690",
+    "0e792db8-fde4-4a38-84e1-5d08289e4220"
+  ],
+  "userMessages": 2,
+  "submitRequests": 3,
+  "providerExecutions": 2,
+  "evidence": [
+    {
+      "kind": "after",
+      "requestId": "d89e86af-b1ee-4bd8-b65d-99abfd324c69",
+      "newer": "NATIVE_FIRST_NEWER_EDIT",
+      "executionCount": 1
+    },
+    {
+      "kind": "before",
+      "requestId": "698cad5b-279d-40a6-8e20-0d7a3bd4b3ef",
+      "newer": "NATIVE_SECOND_NEWER_EDIT",
+      "executionCount": 1
+    }
+  ],
+  "browserVersion": "154.0.8037.0"
+}
