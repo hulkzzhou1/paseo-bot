@@ -15,8 +15,7 @@ import {
   type PluginScreenProps,
 } from "@getpaseo/plugin/client";
 import { Icon, Modal } from "@getpaseo/plugin/client/ui";
-import type { PaseoAgent, PaseoProviderSnapshotResult } from "@getpaseo/client";
-import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
+import type { PaseoProviderSnapshotResult } from "@getpaseo/client";
 import { bootstrap, configuration } from "../shared/contracts.ts";
 import {
   submitDelivery,
@@ -27,22 +26,13 @@ import {
 import { userError } from "../shared/user-error.ts";
 import { createDeviceState } from "./device-state.ts";
 import { WorkspaceLifecycle } from "./workspace-lifecycle.tsx";
-import { DelegatedTargets } from "./delegated-targets.tsx";
 import { HistoryMenu } from "./history.tsx";
-import { ExecutionItem, RequestCard, StopControl } from "./execution.tsx";
-import { observeConversation } from "./observation.ts";
 import { readDeviceValue, writeDeviceValue } from "./web.ts";
 import type { z } from "zod";
 
 type PendingDelivery = z.infer<typeof pendingDelivery>;
 type Outcome = z.infer<typeof deliveryOutcome>;
 type Configuration = z.infer<typeof configuration>;
-type Conversation = {
-  id: string;
-  workspaceId: string;
-  config: Configuration;
-  archivedAt?: string | null;
-};
 export function BotScreen({
   theme,
   layout,
@@ -57,8 +47,6 @@ export function BotScreen({
   const online = hosts.some(
     (entry) => entry.serverId === host.id && entry.status === "online",
   );
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
   const [workspaceAccess, setWorkspaceAccess] = useState<{
     host: string;
     writable: boolean;
@@ -67,14 +55,6 @@ export function BotScreen({
     (writable: boolean) => setWorkspaceAccess({ host: host.id, writable }),
     [host.id],
   );
-  const archivedConversation = useCallback((id: string, archivedAt: string) => {
-    setConversations((previous) =>
-      previous.map((entry) =>
-        entry.id === id ? { ...entry, archivedAt } : entry,
-      ),
-    );
-    setObservationAttempt((value) => value + 1);
-  }, []);
   const [config, setConfig] = useState<Partial<Configuration>>({});
   const [catalog, setCatalog] = useState<
     PaseoProviderSnapshotResult["entries"]
@@ -86,26 +66,18 @@ export function BotScreen({
     key: keyof Configuration;
     values: { id: string; label: string }[];
   } | null>(null);
-  const [agent, setAgent] = useState<PaseoAgent | null>(null);
-  const [items, setItems] = useState<
-    { seq: number; item: AgentTimelineItem }[]
-  >([]);
   const [pending, setPending] = useState(false);
-  const [stopped, setStopped] = useState<{
+  const [createdConversation, setCreatedConversation] = useState<{
     host: string;
-    agentId: string;
+    id: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [initializedHost, setInitializedHost] = useState<string | null>(null);
   const [initializationAttempt, setInitializationAttempt] = useState(0);
-  const [observationAttempt, setObservationAttempt] = useState(0);
-  const [observationError, setObservationError] = useState<string | null>(null);
-  const messageScroll = useRef<ScrollView>(null);
-  const followMessages = useRef(true);
+  const openedDelivery = useRef<string | null>(null);
   const lifetime = useRef(0);
   const navigation = useRef(0);
-  const [observationLoading, setObservationLoading] = useState(false);
   const [deliveryView, setDeliveryView] = useState<{
     host: string;
     slot: string | null;
@@ -117,16 +89,7 @@ export function BotScreen({
   const currentHost = useRef(host.id);
   currentHost.current = host.id;
   const device = useRef<ReturnType<typeof createDeviceState> | null>(null);
-  const selectedRef = useRef<string | null>(null);
   const input = useRef<TextInput>(null);
-  const mergeHistory = useCallback((entries: Conversation[]) => {
-    setConversations((previous) => [
-      ...previous.filter(
-        (entry) => !entries.some((next) => next.id === entry.id),
-      ),
-      ...entries,
-    ]);
-  }, []);
   const persistenceError = useCallback((reason: unknown) => {
     setError(
       `Device storage could not be saved. Keep this page open to retain edits. ${userError(reason)}`,
@@ -163,29 +126,28 @@ export function BotScreen({
     },
     [host.id],
   );
-  function selectConversation(id: string | null) {
-    loadDelivery(id);
-    selectedRef.current = id;
-    setSelected(id);
-    setHistory(false);
-    setError(null);
+  function openNative(id: string) {
+    if (!hostNavigation?.openAgent) {
+      setError(
+        "Native chat navigation is unavailable. Update or reopen Paseo before sending.",
+      );
+      return;
+    }
+    try {
+      hostNavigation.openAgent({ agentId: id, serverId: host.id });
+    } catch (reason) {
+      setError(`Could not open native chat. ${userError(reason)}`);
+    }
+  }
+  function openHistory(id: string) {
     navigation.current++;
-    try {
-      setDraft(device.current?.draft(id).text ?? "");
-    } catch (reason) {
-      setDraft("");
-      persistenceError(reason);
-    }
-    try {
-      device.current?.select(id);
-    } catch (reason) {
-      persistenceError(reason);
-    }
+    setHistory(false);
+    openNative(id);
   }
   function editDraft(text: string) {
     setDraft(text);
     try {
-      device.current?.edit(selectedRef.current, text);
+      device.current?.edit(null, text);
     } catch (reason) {
       persistenceError(reason);
     }
@@ -197,22 +159,18 @@ export function BotScreen({
     let active = true;
     const visit = ++lifetime.current;
     setDeliveryView(null);
+    setCreatedConversation(null);
     busy.current = false;
     navigation.current++;
     setPending(false);
     setDraft("");
     setConfig({});
-    setConversations([]);
     setCatalog([]);
     setPicker(null);
     setHistory(false);
     setLoading(true);
     setInitializedHost(null);
-    selectedRef.current = null;
     device.current = null;
-    setSelected(null);
-    setItems([]);
-    setAgent(null);
     setError(null);
     open({})
       .then(
@@ -224,7 +182,6 @@ export function BotScreen({
       )
       .then(async ([state, providers]) => {
         if (!active) return;
-        setConversations(state.conversations);
         setCatalog(providers.entries);
         device.current = createDeviceState(
           { read: readDeviceValue, write: writeDeviceValue },
@@ -232,24 +189,8 @@ export function BotScreen({
           state.installationId,
         );
         try {
-          const remembered = device.current.selection();
-          const owned = state.conversations.find(
-            (entry) => entry.id === remembered,
-          );
-          const found = owned
-            ? await paseo.agents.ref(owned.id).refresh()
-            : null;
-          if (!active) return;
-          const id =
-            found &&
-            found.agent.workspaceId === owned?.workspaceId &&
-            found.agent.labels["paseo-bot"] === state.installationId
-              ? remembered
-              : null;
-          selectedRef.current = id;
-          setSelected(id);
-          setDraft(device.current.draft(id).text);
-          device.current.select(id);
+          // Returning from native chat must leave the Bot entrance accessible.
+          setDraft(device.current.draft(null).text);
         } catch (reason) {
           if (active) persistenceError(reason);
         }
@@ -263,7 +204,7 @@ export function BotScreen({
         } catch {
           setError("Device preferences could not be read.");
         }
-        loadDelivery(selectedRef.current);
+        loadDelivery(null);
         setInitializedHost(host.id);
         setLoading(false);
       })
@@ -285,26 +226,6 @@ export function BotScreen({
     loadDelivery,
     initializationAttempt,
   ]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: explicit retry replaces a released SDK observation.
-  useEffect(() => {
-    setItems([]);
-    setAgent(null);
-    setObservationError(null);
-    followMessages.current = true;
-    if (!selected) return;
-    return observeConversation(paseo.agents.ref(selected), {
-      timeline: (page) =>
-        setItems(
-          page.entries.map((entry) => ({
-            seq: entry.seqStart,
-            item: entry.item,
-          })),
-        ),
-      agent: setAgent,
-      error: (reason) => setObservationError(userError(reason)),
-      loading: setObservationLoading,
-    });
-  }, [paseo, selected, observationAttempt]);
   function button(title: string, onPress: () => void, disabled = false) {
     return (
       <Pressable
@@ -394,68 +315,46 @@ export function BotScreen({
   ) {
     if (!context.isCurrent() || !context.sentDevice) return;
     const store = context.sentDevice;
-    if (selectedRef.current === record.slot)
-      setDeliveryView({
-        host: context.sentHost,
-        slot: record.slot,
-        record,
-        result,
-      });
+    setDeliveryView({ host: context.sentHost, slot: null, record, result });
     if (result.state !== "accepted" && result.state !== "failed") return;
     try {
-      let promoted: { conversation: Conversation; draft: string } | null = null;
-      if (result.state === "accepted") {
-        const conversation = result.conversation;
-        if (conversation)
-          setConversations((previous) => [
-            ...previous.filter((entry) => entry.id !== conversation.id),
-            conversation,
-          ]);
-        if (
-          conversation &&
-          record.slot === null &&
-          selectedRef.current === null &&
-          navigation.current === context.selection
-        ) {
-          promoted = {
-            conversation,
-            draft: store.created(conversation.id, record),
-          };
-        } else {
-          const remaining = store.accepted(record.slot, record);
-          if (selectedRef.current === record.slot) setDraft(remaining);
-        }
-      }
-      store.setDelivery(record.slot, null);
-      if (promoted) {
-        const { conversation, draft } = promoted;
-        setDraft(draft);
-        selectedRef.current = conversation.id;
-        setSelected(conversation.id);
-        try {
-          store.select(conversation.id);
-          writeDeviceValue(
-            `${context.sentHost}:configuration`,
-            conversation.config,
-          );
-        } catch (reason) {
-          persistenceError(reason);
-        }
-      }
+      if (result.state === "accepted") setDraft(store.accepted(null, record));
+      store.setDelivery(null, null);
     } catch (reason) {
       persistenceError(reason);
-      if (selectedRef.current === record.slot)
-        setDeliveryView({
-          host: context.sentHost,
-          slot: record.slot,
-          record,
-          result: {
-            ...result,
-            message:
-              "Delivery was checked, but local cleanup could not be saved. Restore device storage and check delivery again.",
-          },
-          blocked: true,
-        });
+      setDeliveryView({
+        host: context.sentHost,
+        slot: null,
+        record,
+        result: {
+          ...result,
+          message:
+            "Delivery was checked, but local cleanup could not be saved. Restore device storage and check delivery again.",
+        },
+        blocked: true,
+      });
+      return;
+    }
+    if (result.state === "accepted" && result.conversation) {
+      setCreatedConversation({
+        host: context.sentHost,
+        id: result.conversation.id,
+      });
+      try {
+        writeDeviceValue(
+          `${context.sentHost}:configuration`,
+          result.conversation.config,
+        );
+      } catch (reason) {
+        persistenceError(reason);
+      }
+      if (
+        navigation.current === context.selection &&
+        openedDelivery.current !== record.input.requestId
+      ) {
+        openedDelivery.current = record.input.requestId;
+        openNative(result.conversation.id);
+      }
     }
   }
   async function checkDelivery(record: PendingDelivery) {
@@ -469,7 +368,7 @@ export function BotScreen({
         context,
       );
     } catch (reason) {
-      if (context.isCurrent() && selectedRef.current === record.slot)
+      if (context.isCurrent())
         setDeliveryView({
           host: host.id,
           slot: record.slot,
@@ -491,7 +390,6 @@ export function BotScreen({
     if (!context.sentDevice) return;
     busy.current = true;
     setPending(true);
-    setStopped(null);
     setError(null);
     setDeliveryView({
       host: host.id,
@@ -506,7 +404,7 @@ export function BotScreen({
       context.sentDevice.setDelivery(record.slot, record);
       finishDelivery(record, await submit(record.input), context);
     } catch (reason) {
-      if (context.isCurrent() && selectedRef.current === record.slot)
+      if (context.isCurrent())
         setDeliveryView({
           host: host.id,
           slot: record.slot,
@@ -526,24 +424,21 @@ export function BotScreen({
   async function send() {
     if (
       !composerReady ||
+      !hostNavigation?.openAgent ||
       !online ||
-      readOnly ||
       !workspaceWritable ||
       busy.current ||
-      running ||
-      waiting ||
-      unavailable ||
       unresolved ||
       !draft.trim()
     )
       return;
     const parsed = configuration.safeParse(config);
-    if (!selected && !parsed.success) {
+    if (!parsed.success) {
       setError("Choose provider, model and permission mode before sending.");
       return;
     }
     if (!device.current) return;
-    const submitted = device.current.draft(selected);
+    const submitted = device.current.draft(null);
     const requestId = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
       /[xy]/g,
       (character) => {
@@ -552,52 +447,21 @@ export function BotScreen({
       },
     );
     await dispatch({
-      slot: selected,
+      slot: null,
       ...submitted,
       input: {
         requestId,
         text: draft,
-        ...(selected
-          ? { agentId: selected }
-          : { config: parsed.data as Configuration }),
+        config: parsed.data,
       },
     });
   }
 
   const provider = catalog.find((entry) => entry.provider === config.provider);
   const model = provider?.models?.find((entry) => entry.id === config.model);
-  const unavailable =
-    selected !== null &&
-    (agent === null ||
-      observationError !== null ||
-      observationLoading ||
-      !online);
-  const running =
-    agent?.status === "running" ||
-    agent?.status === "initializing" ||
-    Boolean(agent?.activeTurn);
-  const waiting = Boolean(agent?.pendingPermissions.length);
-  const activeConfig = selected
-    ? conversations.find((conversation) => conversation.id === selected)?.config
-    : config;
-  const activeProvider = catalog.find(
-    (entry) => entry.provider === activeConfig?.provider,
-  );
-  const activeModel = activeProvider?.models?.find(
-    (entry) => entry.id === activeConfig?.model,
-  );
-  const activeThinking = activeModel?.thinkingOptions?.find(
-    (option) => option.id === activeConfig?.thinkingOptionId,
-  );
-  const activeMode = activeProvider?.modes?.find(
-    (mode) => mode.id === activeConfig?.modeId,
-  );
   const composerReady =
     !loading && initializedHost === host.id && device.current !== null;
-  const currentDelivery =
-    deliveryView?.host === host.id && deliveryView.slot === selected
-      ? deliveryView
-      : null;
+  const currentDelivery = deliveryView?.host === host.id ? deliveryView : null;
   const unresolved = Boolean(
     currentDelivery &&
       (currentDelivery.blocked ||
@@ -605,22 +469,15 @@ export function BotScreen({
         currentDelivery.result.state === "ready"),
   );
 
-  const readOnly = Boolean(
-    agent?.archivedAt ||
-      conversations.find((entry) => entry.id === selected)?.archivedAt,
-  );
   const workspaceWritable =
     workspaceAccess?.host === host.id && workspaceAccess.writable;
   const disabled =
-    readOnly ||
+    !hostNavigation?.openAgent ||
     !workspaceWritable ||
     !composerReady ||
     !online ||
     unresolved ||
     pending ||
-    running ||
-    waiting ||
-    unavailable ||
     !draft.trim();
   return (
     <KeyboardAvoidingView
@@ -652,7 +509,8 @@ export function BotScreen({
           disabled={!composerReady}
           accessibilityState={{ disabled: !composerReady }}
           onPress={() => {
-            selectConversation(null);
+            navigation.current++;
+            setHistory(false);
             input.current?.focus();
           }}
           style={{
@@ -695,10 +553,8 @@ export function BotScreen({
         <HistoryMenu
           theme={theme}
           compact={layout.compact}
-          onSelect={selectConversation}
+          onSelect={openHistory}
           onClose={() => setHistory(false)}
-          onEntries={mergeHistory}
-          onArchived={archivedConversation}
         />
       )}
       {loading && (
@@ -764,152 +620,52 @@ export function BotScreen({
                       void dispatch(currentDelivery.record);
                   },
                   pending ||
+                    !hostNavigation?.openAgent ||
                     !online ||
-                    readOnly ||
-                    !workspaceWritable ||
-                    running ||
-                    waiting ||
-                    unavailable,
+                    !workspaceWritable,
                 )}
             </View>
           )}
         </View>
       )}
-      {observationError && (
-        <View style={{ gap: 8, paddingVertical: 8 }}>
-          <Text
-            accessibilityRole="alert"
-            style={{ color: theme.colors.statusDanger }}
-          >
-            Live updates stopped. {observationError}
-          </Text>
-          {button("Retry live updates", () =>
-            setObservationAttempt((attempt) => attempt + 1),
-          )}
-        </View>
+      {createdConversation?.host === host.id &&
+        button(
+          "Open created conversation",
+          () => openNative(createdConversation.id),
+          !hostNavigation?.openAgent,
+        )}
+      {!hostNavigation?.openAgent && (
+        <Text
+          accessibilityRole="alert"
+          style={{ color: theme.colors.statusDanger }}
+        >
+          Native chat navigation is unavailable. Update or reopen Paseo before
+          sending.
+        </Text>
       )}
-      <ScrollView
-        ref={messageScroll}
-        testID="bot-messages"
-        scrollEventThrottle={16}
-        onScroll={({ nativeEvent }) => {
-          followMessages.current =
-            nativeEvent.contentOffset.y +
-              nativeEvent.layoutMeasurement.height >=
-            nativeEvent.contentSize.height - 64;
-        }}
-        onContentSizeChange={() => {
-          if (followMessages.current)
-            messageScroll.current?.scrollToEnd({ animated: false });
-        }}
-        onLayout={() => {
-          if (followMessages.current)
-            messageScroll.current?.scrollToEnd({ animated: false });
-        }}
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          paddingTop: layout.compact ? 16 : 32,
-          paddingBottom: 24,
-        }}
-        keyboardShouldPersistTaps="handled"
-      >
+      <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
         <View
           style={{
             width: "100%",
             maxWidth: 820,
             alignSelf: "center",
-            paddingHorizontal: layout.compact ? 0 : 8,
-            gap: 24,
+            paddingVertical: 32,
+            gap: 12,
           }}
         >
-          {!selected && !loading && (
-            <View style={{ paddingVertical: 32, gap: 8 }}>
-              <Text style={{ ...normal, fontSize: 22, fontWeight: "600" }}>
-                What would you like to do?
-              </Text>
-              <Text style={{ ...muted, fontSize: 14, lineHeight: 20 }}>
-                Start a conversation on {host.label}. Choose the configuration
-                below before sending.
-              </Text>
-              <Text style={{ ...muted, fontSize: 13, lineHeight: 19 }}>
-                Bot conversations share files in their host workspace; each has
-                its own chat context.
-              </Text>
-            </View>
-          )}
-          {items.map(({ item, seq }) => (
-            <ExecutionItem
-              key={`${selected}:${seq}`}
-              item={item}
-              streaming={running && seq === items.at(-1)?.seq}
-              theme={theme}
-              layout={layout}
-            />
-          ))}
-          {selected &&
-            !readOnly &&
-            agent?.pendingPermissions.map((request) => (
-              <RequestCard
-                key={`${host.id}:${selected}:${request.id}`}
-                request={request}
-                agentId={selected}
-                theme={theme}
-                layout={layout}
-                disabled={unavailable || !online || !workspaceWritable}
-              />
-            ))}
-          {selected && (
-            <DelegatedTargets
-              key={`${host.id}:${selected}`}
-              parentId={selected}
-              timeline={items.map(({ item }) => item)}
-              hostId={host.id}
-              theme={theme}
-              navigation={hostNavigation}
-            />
-          )}
+          <Text style={{ ...normal, fontSize: 22, fontWeight: "600" }}>
+            What would you like to do?
+          </Text>
+          <Text style={{ ...muted, fontSize: 14, lineHeight: 20 }}>
+            Start a conversation on {host.label}. Choose the configuration
+            below; after the first message, native chat opens.
+          </Text>
+          <Text style={muted}>
+            Bot conversations share files in their host workspace; each has its
+            own chat context.
+          </Text>
         </View>
       </ScrollView>
-      {readOnly && (
-        <Text
-          accessibilityRole="alert"
-          style={{ ...muted, fontSize: 13, paddingBottom: 8 }}
-        >
-          Archived conversation. Read-only. Use New conversation to continue
-          with context you supply yourself.
-        </Text>
-      )}
-      {unavailable && !observationError && (
-        <Text style={{ ...muted, fontSize: 13, paddingBottom: 8 }}>
-          Loading conversation…
-        </Text>
-      )}
-      {stopped?.host === host.id &&
-        stopped.agentId === selected &&
-        !running && (
-          <Text
-            accessibilityRole="alert"
-            style={{ ...muted, fontSize: 13, paddingBottom: 8 }}
-          >
-            Stopped. You can send your draft.
-          </Text>
-        )}
-      {waiting && !running && (
-        <Text
-          accessibilityRole="alert"
-          style={{ ...muted, fontSize: 13, paddingBottom: 8 }}
-        >
-          Waiting for your response. Your draft stays editable.
-        </Text>
-      )}
-      {running && (
-        <Text
-          accessibilityRole="alert"
-          style={{ ...muted, fontSize: 13, paddingBottom: 8 }}
-        >
-          Running. You can edit a draft while this turn finishes.
-        </Text>
-      )}
       <View
         style={{
           width: "100%",
@@ -927,7 +683,7 @@ export function BotScreen({
           ref={input}
           accessibilityLabel="Message Paseo Bot"
           value={draft}
-          editable={composerReady && !readOnly}
+          editable={composerReady}
           onChangeText={editDraft}
           multiline
           placeholder="Message Paseo Bot…"
@@ -960,100 +716,61 @@ export function BotScreen({
               gap: 0,
             }}
           >
-            {selected ? (
-              <Text
-                numberOfLines={1}
-                style={{
-                  ...muted,
-                  fontSize: 13,
-                  paddingHorizontal: 8,
-                  paddingVertical: 12,
-                  flexShrink: 1,
-                }}
-              >
-                {[
-                  activeModel?.label ?? activeConfig?.model,
-                  activeThinking?.label,
-                  activeMode?.label,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </Text>
-            ) : (
-              <>
-                {options(
-                  "Provider",
-                  catalog
-                    .filter(
-                      (entry) => entry.enabled && entry.status === "ready",
-                    )
-                    .map((entry) => ({
-                      id: entry.provider,
-                      label: entry.label ?? entry.provider,
-                    })),
-                  "provider",
-                )}
-                {provider &&
-                  options(
-                    "Model",
-                    provider.models?.filter(
-                      (model) => model.isSelectable !== false,
-                    ) ?? [],
-                    "model",
-                  )}
-                {model?.thinkingOptions?.length
-                  ? options(
-                      "Thinking",
-                      model.thinkingOptions,
-                      "thinkingOptionId",
-                    )
-                  : null}
-                {provider &&
-                  options("Permission mode", provider.modes ?? [], "modeId")}
-              </>
+            {options(
+              "Provider",
+              catalog
+                .filter((entry) => entry.enabled && entry.status === "ready")
+                .map((entry) => ({
+                  id: entry.provider,
+                  label: entry.label ?? entry.provider,
+                })),
+              "provider",
             )}
+            {provider &&
+              options(
+                "Model",
+                provider.models?.filter(
+                  (model) => model.isSelectable !== false,
+                ) ?? [],
+                "model",
+              )}
+            {model?.thinkingOptions?.length
+              ? options("Thinking", model.thinkingOptions, "thinkingOptionId")
+              : null}
+            {provider &&
+              options("Permission mode", provider.modes ?? [], "modeId")}
           </View>
-          {running && selected && !readOnly ? (
-            <StopControl
-              key={`${host.id}:${selected}`}
-              agentId={selected}
-              theme={theme}
-              disabled={unavailable || !online || !workspaceWritable}
-              onStopped={() => setStopped({ host: host.id, agentId: selected })}
-            />
-          ) : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={pending ? "Sending…" : "Send"}
-              accessibilityState={{ disabled }}
-              disabled={disabled}
-              onPress={() => void send()}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={pending ? "Sending…" : "Send"}
+            accessibilityState={{ disabled }}
+            disabled={disabled}
+            onPress={() => void send()}
+            style={{
+              width: 44,
+              height: 44,
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: disabled ? 0.45 : 1,
+            }}
+          >
+            <View
               style={{
-                width: 44,
-                height: 44,
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: theme.colors.foreground,
                 alignItems: "center",
                 justifyContent: "center",
-                opacity: disabled ? 0.45 : 1,
               }}
             >
-              <View
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 16,
-                  backgroundColor: theme.colors.foreground,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Icon
-                  name={pending ? "LoaderCircle" : "ArrowUp"}
-                  size={18}
-                  color={theme.colors.surface0}
-                />
-              </View>
-            </Pressable>
-          )}
+              <Icon
+                name={pending ? "LoaderCircle" : "ArrowUp"}
+                size={18}
+                color={theme.colors.surface0}
+              />
+            </View>
+          </Pressable>
         </View>
       </View>
       <Modal

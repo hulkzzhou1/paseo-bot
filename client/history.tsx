@@ -16,15 +16,11 @@ export function HistoryMenu({
   compact,
   onSelect,
   onClose,
-  onEntries,
-  onArchived,
 }: {
   theme: PluginScreenProps["theme"];
   compact: boolean;
   onSelect(id: string): void;
   onClose(): void;
-  onEntries(entries: Entry[]): void;
-  onArchived(id: string, archivedAt: string): void;
 }) {
   const alive = useRef(true);
   useEffect(() => {
@@ -73,7 +69,6 @@ export function HistoryMenu({
         }
         if (active) {
           setEntries(all);
-          onEntries(all);
           setMore(Boolean(cursor));
           setError(null);
         }
@@ -90,7 +85,7 @@ export function HistoryMenu({
       active = false;
       clearInterval(interval);
     };
-  }, [list, pages, reload, onEntries, showArchived]);
+  }, [list, pages, reload, showArchived]);
   function action(
     label: string,
     onPress: () => void,
@@ -303,9 +298,8 @@ export function HistoryMenu({
               setArchiving(true);
               setArchiveError(null);
               void archive({ id: confirmArchive.id })
-                .then((result) => {
+                .then(() => {
                   if (!alive.current) return;
-                  onArchived(result.id, result.archivedAt);
                   setConfirmArchive(null);
                   setArchiveNotice(
                     "Conversation archived. View it in archived conversations.",
