@@ -121,6 +121,7 @@ test("native creation retains system choices and receives Bot guidance without e
     assert.match(actual.systemPrompt, /user.s goals/i);
     assert.match(actual.systemPrompt, /project Agents own.*execution/i);
     assert.match(actual.systemPrompt, /after delegation/i);
+    assert.match(actual.systemPrompt, /applicable specialist.*dispatch/i);
     assert.match(actual.systemPrompt, /Keep the user's profile instructions/);
     assert.equal(actual.mode, "approve");
     assert.equal(actual.preapproved, 0);

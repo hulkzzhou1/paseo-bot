@@ -2,7 +2,7 @@
 
 2026-10-28. Issue #11. Implementation reviewed at `1f0947107c8378e4d6420f22b74848e0f567ef3e`; the evidence/media commit contains the same runtime prompt.
 
-Bot owns continuing coordination toward user goals; project Agents own concrete execution. The first prompt paragraph defines the role without imposing a fixed conversation/dispatch checklist. Conflicting permission to carry out arbitrary assigned work was removed. Existing targeting, approval and normal parent/child completion guidance remains. No tool permissions or Provider defaults changed.
+Bot owns continuing coordination toward user goals; project Agents own concrete execution. The first prompt paragraph defines the role without imposing a fixed conversation/dispatch checklist. Conflicting permission to carry out arbitrary assigned work was removed. Existing targeting, approval and normal parent/child completion guidance remains. No tool permissions or Provider defaults changed. A subsequent tool-choice clarification gives applicable specialist skills/workflow tools precedence over generic Paseo dispatch. The generic path is now explicitly conditional; required workflow associations are not bypassed.
 
 ## Checks and independent review
 
@@ -32,3 +32,5 @@ Server Browser opened Bot History and the same native conversation. Desktop 1120
 Existing conversations retain their saved instructions, even after reload. Start a new native Agent conversation in Bot to adopt this role. Existing history remains intact. No private store edits, unsolicited migration prompts, task replay or production conversation changes were used.
 
 Role guidance is a model instruction, not a new permission sandbox or autonomous background monitor. Normal parent/completion notifications provide continuation; the plugin adds no polling scheduler. Native iOS/Android and Electron, beta App runtime and other real Providers were not exercised. Provider permission/question/voice/attachment flows were not separately retested in this role change. Production daemon was not restarted.
+
+The TAPD clarification was checked against installed `paseo-tapd` skill and the actual `tapd_agent_options`, `tapd_dispatch_agent` and `tapd_bind_agent` tool schemas, without executing or changing any real TAPD item. The actual Provider run above exercises generic project delegation; it does not establish TAPD dispatch acceptance. A second focused RED/GREEN cycle verifies specialist-workflow priority is injected through the same public creation boundary.

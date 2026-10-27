@@ -1,6 +1,6 @@
 # Paseo Bot
 
-Paseo Bot is your assistant for understanding goals and organizing Agents to carry them forward on one connected daemon host. Discuss ideas, develop shared understanding and coordinate concrete work through project Agents. Bot remains responsible for coordination after delegation; project Agents own execution.
+Paseo Bot is your assistant for understanding goals and organizing Agents to carry them forward on one connected daemon host. Discuss ideas, develop shared understanding and coordinate concrete work through project Agents. Bot remains responsible for coordination after delegation; project Agents own execution. Applicable specialist skills and workflow tools handle task-specific dispatch and associations; generic Paseo delegation is the fallback when no specialist workflow applies.
 
 Each Bot conversation is a normal durable Paseo Agent in a dedicated background workspace. Selecting Paseo Bot opens that workspace directly. On its first visit, choose Agent in the native New tab page. Native chat owns initial configuration and first send; no Agent is created merely by opening the workspace. The host provides model controls, streamed Markdown, grouped tool calls, permission requests, questions, Stop and running feedback. Use the native new-tab controls for another conversation and the Bot history button in the workspace header for the existing Bot history list.
 
