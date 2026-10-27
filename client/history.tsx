@@ -280,8 +280,9 @@ export function HistoryMenu({
         <Modal.Content contentContainerStyle={{ padding: 16, gap: 8 }}>
           <Text style={{ color: theme.colors.foreground }}>
             Archive {confirmArchive?.title}? Running conversations are stopped
-            and confirmed first. Archived history stays read-only; drafts and
-            shared files are retained.
+            and confirmed first. History and shared files are retained. Archived
+            conversations open in native chat, which controls their available
+            actions.
           </Text>
           {archiveError && (
             <Text

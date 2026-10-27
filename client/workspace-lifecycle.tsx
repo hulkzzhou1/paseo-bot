@@ -129,7 +129,7 @@ export function WorkspaceLifecycle({
           {status.state === "archived"
             ? "The Bot workspace was archived."
             : "The Bot workspace is archived or no longer available."}{" "}
-          New messages are blocked. Rebuild explicitly to create a new
+          New Bot conversations are blocked. Rebuild explicitly to create a new
           background workspace; old history and shared files remain.
         </Text>
       )}
