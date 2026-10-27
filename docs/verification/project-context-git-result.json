@@ -1,0 +1,9 @@
+{
+  "revision": "7ad20572182331a17dd271b20529d77a5c9fd005",
+  "pluginStatus": "running",
+  "exactGitHead": "7ad20572182331a17dd271b20529d77a5c9fd005",
+  "agentId": "4de3eeda-c1c4-483e-b141-6ce2e595ac75",
+  "workspaceId": "wks_f2c173fdf4a2001c",
+  "toolCalls": 0,
+  "answer": "不在具体项目目录时，应先向相关项目 Agent 获取当前事实、约束和证据，再讨论项目细节；明确区分已确认信息、假设和待核实问题，不凭目录、页面或相似名称推断项目身份。\n\n新事项用新的项目 Agent；同一事项若已有 Agent 积累了相关调查或工作上下文，就继续复用。咨询只授权了解情况，不代表可以修改项目。\n\n本次未创建任务、未调用工具，也未核查具体项目状态。"
+}

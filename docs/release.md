@@ -1,5 +1,11 @@
 # Release status
 
+[v0.4.2](https://github.com/hulkzzhou1/paseo-bot/releases/tag/v0.4.2) is locally enabled/running at `7ad20572182331a17dd271b20529d77a5c9fd005`. Bot obtains project facts through project Agents; a new matter uses a fresh Agent unless relevant prior groundwork justifies continuing an existing one. Read-only consultation is separate from implementation. [Acceptance](verification/issue-12.md). Community [PR #1343](https://github.com/getpaseo/plugins/pull/1343) awaits independent review. Start a new native Bot conversation to adopt the saved role.
+
+v0.4.0 PR #1341 was approved/merged. The deployed directory still served v0.3.1 when checked on 2026-10-28; approval and deployment are distinct. The interim v0.4.1 Git tag/release remains unchanged, and its unreviewed directory proposal was advanced to v0.4.2 before review. Earlier pending-review statements below are historical.
+
+## Historical v0.4.0 release record
+
 [v0.4.0](https://github.com/hulkzzhou1/paseo-bot/releases/tag/v0.4.0) pins `cf2317274cff3c4a189f3165aa63ece6d2d7f2f4`. The authorized local installation is enabled/running at that exact pin. New Bot conversations receive the user-goal coordination role and specialist-workflow precedence. Existing sessions retain saved instructions; start a new native Agent conversation to adopt the updated role. [Acceptance](verification/issue-11.md). Community [PR #1341](https://github.com/getpaseo/plugins/pull/1341) awaits independent review.
 
 v0.3.1 PR #1339 was approved/merged, and its deployed directory pin was verified on 2026-10-28. Earlier pending-review statements below are historical.
