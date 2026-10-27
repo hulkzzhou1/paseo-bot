@@ -1,0 +1,25 @@
+{
+  "versions": {
+    "app": "0.13.2",
+    "daemon": "0.13.2",
+    "sdk": "0.13.2",
+    "provider": "codex/gpt-6.1-sol",
+    "thinking": "low",
+    "mode": "auto-review"
+  },
+  "parentId": "39e5adb3-8ff5-4c66-9d37-7969fc96534e",
+  "childId": "aad891c4-63c9-4a07-aaee-0074c261a48a",
+  "workspaceId": "wks_379921e35e765c23",
+  "explorationToolCalls": 0,
+  "createdProjectAgents": 1,
+  "sameAgentFollowup": true,
+  "finishNotifications": true,
+  "background": false,
+  "childExcludedFromBotHistory": true,
+  "parentImplementationToolCalls": 0,
+  "parentSkillReadCalls": 1,
+  "projectAgentExecuted": true,
+  "firstResult": "ROLE_DELEGATED_OK",
+  "changedResult": "ROLE_CHANGED_OK",
+  "bothResultsSummarizedByBot": true
+}
