@@ -4,7 +4,7 @@
 
 Version 0.2.0 uses public `PluginScreenProps.navigation.openAgent({agentId, serverId})` for all existing conversations. The earlier custom-chat execution/delivery evidence below is historical; native chat now owns later sends, configuration, permissions, tools, drafts and archive behavior. Bot retains initial creation/delivery safety, history and workspace lifecycle. Old custom conversation drafts are not migrated. The UI capability boundary and change rationale are in [the audit](native-chat-audit.md).
 
-Paseo Bot currently targets exactly Paseo **0.13.2**. The installed CLI, daemon, app, client SDK, protocol and plugin SDK were inspected at that version; this is not a claim about earlier versions or future releases. The first release guarantees desktop and compact mobile browsers. Native devices are not guaranteed, as explicitly accepted in specification decision 15.
+Paseo Bot declares **>=0.13.2**, allowing newer stable and beta releases to load at the user's request. Paseo also compares a prerelease's stable core, so 0.14.0-beta.1 passes this range. Runtime acceptance and pinned SDK dependencies remain at **0.13.2**; loading eligibility is not a claim that every future version has been runtime-tested. Breaking public API changes may still require a plugin update. The first release guarantees desktop and compact mobile browsers. Native devices are not guaranteed, as explicitly accepted in specification decision 15.
 
 | Capability | Supported public path in 0.13.2 | Evidence and limit |
 | --- | --- | --- |

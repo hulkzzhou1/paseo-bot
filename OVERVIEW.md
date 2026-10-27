@@ -6,7 +6,7 @@ Each Bot conversation is a normal durable Paseo Agent in a dedicated background 
 
 ## Setup and compatibility
 
-The supported version is exactly Paseo app, daemon and SDK **0.13.2**, with the Paseo CLI available on the daemon's PATH. Paseo selects and remembers creation configuration using its own native preferences and profiles; existing conversations retain their own configuration. Codex is the real Provider exercised by the acceptance record. Other Providers depend on their public Paseo adapters and have not been independently accepted.
+Requires Paseo **0.13.2 or later**, with the Paseo CLI available on the daemon's PATH. Newer releases, including beta versions, are allowed to load. Runtime acceptance was performed on 0.13.2; newer releases may introduce API changes and have not all been tested. Paseo selects and remembers creation configuration using its own native preferences and profiles; existing conversations retain their own configuration. Codex is the real Provider exercised by the acceptance record. Other Providers depend on their public Paseo adapters and have not been independently accepted.
 
 Management capabilities depend on the selected Provider's available Paseo tools and the daemon's MCP injection/tool policy. In 0.13.2, `daemon.mcp.injectIntoAgents` defaults to false; a host administrator must explicitly configure supported MCP injection and permitted tools when management is desired. The plugin does not enable disabled tools, change daemon configuration or bypass normal permissions. If management tools are unavailable, the Bot should explain the missing capability. Review your existing Paseo MCP settings when you intend to allow management; injection is not enabled by this plugin.
 

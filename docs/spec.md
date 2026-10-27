@@ -110,3 +110,7 @@
 产品决策沿用原始 ADR。元数据恢复、兼容性以及公开 Stop/rename/Provider question API 的实测属于工程工作，不重开已确认的产品范围；不能以降低首期交互完整性宣称完成。
 
 社区发布参考：[官方发布指南](https://paseo.sh/docs/plugins/publishing)、[提交模板](https://github.com/getpaseo/plugins/blob/main/.github/ISSUE_TEMPLATE/submit-plugin.yml)、[当前审核政策](https://github.com/getpaseo/plugins/blob/main/REVIEW.md)。
+
+## Compatibility policy update (2026-10-28, issue #10)
+
+用户明确要求允许后续版本加载。插件声明改为 `>=0.13.2`，保留已验证的最低基线与依赖锁；允许更高稳定版及 beta 版，不将版本门禁通过等同于所有未来版本已完成运行验收。公开 API 出现破坏性变更时继续修复，不导入私有模块。
