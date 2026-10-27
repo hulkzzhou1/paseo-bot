@@ -1,5 +1,11 @@
 # Release status
 
+v0.3.1 is [released](https://github.com/hulkzzhou1/paseo-bot/releases/tag/v0.3.1) and locally running at `73b81ff03f36bdd3ae75bf4f871daaa8bd9cf2df`. Requirements now allow `>=0.13.2`; dependency pins and runtime code are unchanged. [Acceptance](verification/issue-10.md). Community [PR #1339](https://github.com/getpaseo/plugins/pull/1339) is pending independent review.
+
+v0.3.0 PR #1328 was approved and merged; its exact pin was verified in the deployed directory on 2026-10-28. Earlier pending-review statements below are historical.
+
+## Historical v0.3.0 release record
+
 Version 0.3.0 is [released](https://github.com/hulkzzhou1/paseo-bot/releases/tag/v0.3.0) and locally installed/running at `0966b7686859a4c6af0b8cd47332d49c12dd48b5`. Native workspace entry now owns creation/defaults/first send; Bot history remains. Fresh exact-Git installation and actual Provider/browser acceptance passed. [Evidence](verification/issue-9.md). Community [PR #1328](https://github.com/getpaseo/plugins/pull/1328) awaits independent review; this revision is not yet listed.
 
 Version 0.2.0 [PR #1319](https://github.com/getpaseo/plugins/pull/1319) was approved and merged, and the actual deployed directory was verified at its `d1f312260230fe42cd086ae570a006c3085e9e81` pin on 2026-10-27.
