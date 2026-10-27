@@ -1,8 +1,8 @@
 # Paseo Bot
 
-Paseo Bot adds a global management conversation page for one connected daemon host. Start independent conversations, switch through persistent history, and ask your chosen Provider to inspect and manage Paseo work or perform an explicitly assigned ordinary task.
+Paseo Bot adds a global management conversation launcher for one connected daemon host. Start independent conversations, switch through persistent history, and ask your chosen Provider to inspect and manage Paseo work or perform an explicitly assigned ordinary task.
 
-Each Bot conversation is a normal durable Paseo Agent in a dedicated background workspace. The page shows streamed Markdown, tool calls and results, permission requests, Provider questions and Stop. Running conversations continue when you switch or leave the page. New conversation and History controls remain available in desktop and compact layouts.
+Each Bot conversation is a normal durable Paseo Agent in a dedicated background workspace. After the first message is accepted, or when you choose a conversation in Bot History, Paseo opens that Agent in its native conversation page. The host provides model controls, streamed Markdown, grouped tool calls, permission requests, questions, Stop and running feedback. Return to Paseo Bot in the sidebar to start another conversation or browse Bot History.
 
 ## Setup and compatibility
 
@@ -14,15 +14,16 @@ Desktop and compact mobile browsers are the release target. Native iOS/Android d
 
 ## Conversations and delegated work
 
-Device-local browser storage keeps each host's last selection, new-conversation configuration, per-conversation drafts and pending delivery identity. Send is disabled while the selected conversation runs or awaits a response; you may continue editing a draft. An unknown send is checked against durable history before an explicit retry. Reconnection restores history and state without automatically repeating a task. The host may temporarily remove the plugin page during disconnection, so continuous offline editing is not guaranteed; reopening or reconnecting restores saved browser state.
+Device-local browser storage keeps the launcher's new-conversation configuration, draft and pending first-send identity. An unknown first send is checked before an explicit retry; navigation failures do not resend it. Existing conversation drafts and pending sends from older Bot versions remain recoverable in the launcher before opening the native page. They are not automatically pasted into or merged with native drafts.
 
-Rename conversations, archive them after execution is confirmed stopped, and read archived history. Archiving the Bot workspace requires an explicit manual rebuild before further Bot work. Rebuild creates a new workspace identity while preserving old history and shared files.
+Once opened, the native conversation page owns subsequent messages, configuration changes, draft persistence, running-send behavior, reconnect handling and message actions. The Bot no longer imposes its earlier custom busy-send or read-only chat rules. Returning to the launcher stays on the launcher rather than immediately redirecting to the last conversation.
+Rename conversations, archive them after execution is confirmed stopped, and open archived history using the host’s native behavior. Archiving the Bot workspace requires an explicit manual rebuild before further Bot work. Rebuild creates a new workspace identity while preserving old history and shared files.
 
-Management stays on the current host and requires actual targets. The Bot is instructed to clarify ambiguous requests and create business work in a normal visible workspace, with ordinary parent/child completion notifications. Related Agents appear under Delegated work with public Agent/workspace navigation, validated against their real parent relationship or a successful structured same-host Paseo send receipt. Existing recipients retain their original parent. Delegated Agents do not appear in Bot History. These instructions do not replace Provider permissions or guarantee enforcement by every external tool transport.
+Management stays on the current host and requires actual targets. The Bot is instructed to clarify ambiguous requests and create business work in a normal visible workspace, with ordinary parent/child completion notifications. Delegation and completion appear in the native conversation and its normal navigation. Delegated Agents do not appear in Bot History. These instructions do not replace Provider permissions or guarantee enforcement by every external tool transport.
 
 ## Data and permissions
 
-The daemon's ordinary `PASEO_HOME/bot` directory, normally `~/.paseo/bot`, holds shared task files. It is separate from the installed plugin source. All Bot conversations on that host share files; the directory is not a filesystem sandbox and concurrent edits can conflict. Paseo stores durable transcripts. Plugin data stores workspace generations, owned conversation references and delivery fingerprints; it does not maintain a second transcript. Browser drafts, selection, preferences and pending sends stay in that browser profile and are not synchronized across devices.
+The daemon's ordinary `PASEO_HOME/bot` directory, normally `~/.paseo/bot`, holds shared task files. It is separate from the installed plugin source. All Bot conversations on that host share files; the directory is not a filesystem sandbox and concurrent edits can conflict. Paseo stores durable transcripts. Plugin data stores workspace generations, owned conversation references and delivery fingerprints; it does not maintain a second transcript. Launcher drafts, preferences and pending first sends stay in that browser profile. Native conversation drafts follow the host’s own storage behavior.
 
 Conversation prompts, tool inputs/results and files accessed by authorized tools can be sent to the selected external Provider under its own data policy. Local history does not imply that conversation data stays on the daemon. This is a trusted plugin running with the daemon user's privileges. Stop and rename use the supported local CLI with the exact selected daemon home; archived-workspace inspection uses a read-only public SDK helper and local daemon authentication without exposing credentials. The plugin does not download software at runtime.
 
