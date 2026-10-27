@@ -545,8 +545,8 @@ export function BotScreen({
       />
       {Platform.OS !== "web" && (
         <Text style={muted}>
-          This Paseo version cannot persist Bot preferences or drafts on native
-          devices.
+          This Paseo version cannot persist Bot entrance preferences or
+          new-conversation drafts on native devices.
         </Text>
       )}
       {history && (
