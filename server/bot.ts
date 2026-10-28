@@ -334,6 +334,18 @@ export function createBot() {
     openWorkspace: (paseo: PaseoApi) =>
       serial(async () => {
         const state = await read();
+        if (state.coordinator && !state.coordinator.initialized) {
+          const existing = (await readProfiles(paseo)).find(
+            (profile) => profile.id === state.coordinator?.id,
+          );
+          if (!existing)
+            throw new Error(
+              "Coordinator preset creation outcome is unknown. Restore configuration access or the original plugin data, then retry; no preset write was repeated.",
+            );
+          state.coordinator = { id: existing.id, initialized: true };
+          state.coordinatorSetupStarted = true;
+          await save(state);
+        }
         await checkAssociation(paseo, state);
         if (state.workspaceId) {
           if ((await inspect(paseo, state)).state !== "ready")

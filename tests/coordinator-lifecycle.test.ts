@@ -474,6 +474,10 @@ test("an unconfirmed initialization is checked by its stable identity and never 
       1,
     );
     await assert.rejects(legacy(daemon), /setup is incomplete/i);
+    await assert.rejects(
+      daemon.rpc("open-workspace", {}),
+      /creation outcome is unknown/i,
+    );
     assert.equal((await daemon.rpc("bootstrap", {})).workspaceId, null);
   } finally {
     await daemon.close();
@@ -526,6 +530,14 @@ test("lost acknowledgements and failed confirmation recover the same preset with
         await daemon.client.config.patch({ agentProfiles: edited });
         await writeFile(join(daemon.home, "config-fault.json"), "{}");
         await cli(daemon, ["plugin", "reload", "paseo-bot"]);
+        const { workspaceId } = z
+          .object({ workspaceId: z.string() })
+          .parse(await daemon.rpc("open-workspace", {}));
+        const resumed = await native(daemon, workspaceId);
+        assert.equal(
+          (await inspect(daemon, resumed.id)).systemPrompt,
+          "An edit after the unacknowledged write.",
+        );
         const result = z
           .object({ profile: z.object({ id: z.string() }) })
           .parse(await daemon.rpc("prepare-coordinator", {}));

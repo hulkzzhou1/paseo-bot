@@ -61,9 +61,9 @@ Paseo Team 由一个持续负责目标推进的 Coordinator，按任务需要组
 仅使用现有公开 `config.get/patch`、handler、`agent.create` before hook 与 `systemPrompt`。不改宿主、不新增协议字段或生命周期，不导入内部模块，不直接读写宿主配置文件。
 
 - 唯一明确的专属 profileId 对应 Coordinator 预设；同名预设不能冒认。只投影所需预设数据，不输出、缓存或传给 Agent 其他配置。
-- notes 标准语义是适用场景，系统不会自动注入。这里采用用户已接受的**插件显式加载约定**；入口应说明其用途，其他预设保持原语义。notes 会被系统 list_profiles 看到，不存凭据。
+- notes 标准语义是适用场景，系统不会自动注入。这里采用用户已接受的**插件显式加载约定**；公开产品说明（OVERVIEW）应说明其用途，其他预设保持原语义。notes 会被系统 list_profiles 看到，不存凭据。
 - 原生与旧 RPC 共用解析，采用专属预设明确指定的 provider/model/mode/thinking/features，不能让另一份输入配置覆盖它。未指定字段沿用现有系统语义，不硬编码模型或自动升权。
-- 现有公开接口不能在原生 UI 自动预选 profileId，复用已有 picker 与入口说明。保留既有 provider/权限配置校验，不静默更换权限。旧 SDK 创建需要有效 provider/model，不能用占位模型等待 hook 修复；模型未指定或不可解析时如实提示所缺配置，不等同于预设删除。
+- 现有公开接口不能在原生 UI 自动预选 profileId，复用已有 picker，公开产品文档说明该约定，冲突时通过创建错误提示。保留既有 provider/权限配置校验，不静默更换权限。旧 SDK 创建需要有效 provider/model，不能用占位模型等待 hook 修复；模型未指定或不可解析时如实提示所缺配置，不等同于预设删除。
 - 将现有 managementPrompt 的通用角色规则作为首次填充及已确认缺失回退的公开默认文案；预设存在时，用户 notes 是活跃规则来源，两条创建路径不再追加另一份完整旧规则。通过 systemPrompt 真正加载一次，保留其他不冲突的合法配置，不能只检查 notes 已保存。
 - notes 清空是合法选择，不能回填默认。升级、重载、启用和重启不覆盖预设内容或运行配置；旧会话保留创建时指令。
 
