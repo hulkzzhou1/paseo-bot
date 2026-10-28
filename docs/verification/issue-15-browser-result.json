@@ -1,0 +1,34 @@
+{
+  "app": "0.13.2",
+  "daemon": "0.13.2",
+  "sdk": "0.13.2",
+  "viewports": [[1120, 900], [390, 844]],
+  "compactViewportAndDocumentWidth": 390,
+  "presetId": "paseo-bot-cf9cf2c4-0085-404b-bf50-b973279e46ac",
+  "profileCount": 2,
+  "conversations": [
+    {
+      "id": "b8c20092-4f3e-45df-8b65-29fd2726667d",
+      "workspaceId": "wks_e167c81f41a0bea2",
+      "provider": "bot-test",
+      "model": "test-model",
+      "mode": "approve",
+      "thinking": "brief",
+      "notesExactlyOnce": true
+    },
+    {
+      "id": "8167f0eb-e4f5-439f-9657-f10f2046cee0",
+      "workspaceId": "wks_e167c81f41a0bea2",
+      "provider": "bot-test",
+      "model": "test-model",
+      "mode": "approve",
+      "thinking": "brief",
+      "notesExactlyOnce": true
+    }
+  ],
+  "historyIds": [
+    "b8c20092-4f3e-45df-8b65-29fd2726667d",
+    "8167f0eb-e4f5-439f-9657-f10f2046cee0"
+  ],
+  "preparationCreatedNoAgent": true
+}
