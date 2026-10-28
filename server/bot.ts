@@ -6,6 +6,12 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { inspectArchivedWorkspace } from "./workspace-status.ts";
 import { managementPrompt } from "./management.ts";
+import {
+  readProfiles,
+  runtimeFields,
+  resolveCoordinator,
+  configAccessDenied,
+} from "./coordinator.ts";
 import { executeCli } from "./cli.ts";
 import {
   questionsSchema,
@@ -24,6 +30,14 @@ const record = z.object({
 });
 const stateSchema = z.object({
   installationId: z.string(),
+  coordinatorSetupStarted: z.literal(true).optional(),
+  coordinator: z
+    .object({
+      id: z.string(),
+      initialized: z.boolean(),
+      writeAttempted: z.boolean().optional(),
+    })
+    .optional(),
   workspaceId: z.string().nullable(),
   nativeWorkspaceIds: z.array(z.string()).default([]),
   requests: z.record(z.string(), record),
@@ -42,15 +56,27 @@ export function createBot() {
     "bot",
   );
   let queue: Promise<unknown> = Promise.resolve();
+  let stateSeen = false;
   async function read(): Promise<z.infer<typeof stateSchema>> {
-    await mkdir(root, { recursive: true, mode: 0o700 });
+    const created = await mkdir(root, { recursive: true, mode: 0o700 });
     await mkdir(directory, { recursive: true, mode: 0o700 });
     try {
-      return stateSchema.parse(
+      const state = stateSchema.parse(
         JSON.parse(await readFile(join(root, "state.json"), "utf8")),
       );
+      if (state.coordinatorSetupStarted && !state.coordinator)
+        throw new Error("Coordinator association is missing");
+      stateSeen = true;
+      return state;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+        throw new Error(
+          "Bot state could not be read; the Coordinator association is unknown. Restore the plugin data and retry.",
+        );
+      if (!created || stateSeen)
+        throw new Error(
+          "Bot state is missing; the Coordinator association is unknown. Restore the plugin data and retry.",
+        );
       const state = {
         installationId: randomUUID(),
         workspaceId: null,
@@ -61,6 +87,7 @@ export function createBot() {
         archivedWorkspaces: {},
       };
       await save(state);
+      stateSeen = true;
       return state;
     }
   }
@@ -68,6 +95,40 @@ export function createBot() {
     const temporary = join(root, "state.tmp");
     await writeFile(temporary, JSON.stringify(state), { mode: 0o600 });
     await rename(temporary, join(root, "state.json"));
+  }
+  async function checkAssociation(
+    paseo: PaseoApi,
+    state: z.infer<typeof stateSchema>,
+    profiles?: Awaited<ReturnType<typeof readProfiles>>,
+  ) {
+    if (state.coordinator) return;
+    const unknown = () =>
+      new Error(
+        "Coordinator association is unknown. Existing resources survived without their saved association; restore the original plugin data before setup.",
+      );
+    if (
+      (profiles ?? (await readProfiles(paseo))).some((profile) =>
+        profile.id.startsWith("paseo-bot-"),
+      )
+    )
+      throw unknown();
+    if (state.workspaceId) return;
+    let cursor: string | undefined;
+    do {
+      const page = await paseo.workspaces.list({
+        filter: { includeBackground: true },
+        page: { limit: 100, cursor },
+      });
+      if (
+        page.entries.some(
+          (workspace) => workspace.workspaceDirectory === directory,
+        )
+      )
+        throw unknown();
+      cursor = page.pageInfo.hasMore
+        ? (page.pageInfo.nextCursor ?? undefined)
+        : undefined;
+    } while (cursor);
   }
   function serial<T>(fn: () => Promise<T>): Promise<T> {
     const result = queue.then(fn);
@@ -144,23 +205,128 @@ export function createBot() {
     return { workspaceId: state.workspaceId, state: status };
   }
   return {
-    async guideNative(config: AgentSessionConfig) {
-      if (
-        config.cwd !== directory ||
-        config.internal ||
-        config.systemPrompt?.includes(managementPrompt)
-      )
-        return config;
+    prepareCoordinator: (paseo: PaseoApi, sourceProfileId?: string) =>
+      serial(async () => {
+        const state = await read();
+        let profiles = await readProfiles(paseo);
+        await checkAssociation(paseo, state, profiles);
+        const existing = profiles.find(
+          (profile) => profile.id === state.coordinator?.id,
+        );
+        if (existing || state.coordinator?.initialized) {
+          if (!state.coordinatorSetupStarted) {
+            state.coordinatorSetupStarted = true;
+            await save(state);
+          }
+          if (existing && !state.coordinator?.initialized) {
+            state.coordinator = { id: existing.id, initialized: true };
+            await save(state);
+          }
+          return {
+            status: "ready" as const,
+            profile: existing ? { id: existing.id, name: existing.name } : null,
+          };
+        }
+        if (state.coordinator && state.coordinator.writeAttempted !== false)
+          throw new Error(
+            "Coordinator preset creation outcome is unknown. Reopen to check the same identity; an unconfirmed write will not be repeated.",
+          );
+        if (!sourceProfileId)
+          return {
+            status: "choose-source" as const,
+            sources: profiles.map(({ id, name, provider, model, modeId }) => ({
+              id,
+              name,
+              provider,
+              model,
+              modeId,
+            })),
+          };
+        if (!profiles.some((profile) => profile.id === sourceProfileId))
+          throw new Error("Choose an existing source preset.");
+        if (!state.coordinator) {
+          state.coordinatorSetupStarted = true;
+          state.coordinator = {
+            id: `paseo-bot-${randomUUID()}`,
+            initialized: false,
+            writeAttempted: false,
+          };
+          await save(state);
+        }
+        // Fresh read immediately before the whole-list patch narrows the edit race.
+        profiles = await readProfiles(paseo);
+        const recovered = profiles.find(
+          (profile) => profile.id === state.coordinator?.id,
+        );
+        if (!recovered) {
+          const source = profiles.find(
+            (profile) => profile.id === sourceProfileId,
+          );
+          if (!source)
+            throw new Error(
+              "The source preset changed. Refresh and choose again.",
+            );
+          const fields = runtimeFields(source);
+          if (!fields.provider || !fields.model)
+            throw new Error(
+              "Set an explicit provider and model in the source preset, then retry.",
+            );
+          state.coordinator.writeAttempted = true;
+          await save(state);
+          try {
+            await paseo.config.patch({
+              agentProfiles: [
+                ...profiles,
+                {
+                  id: state.coordinator.id,
+                  name: "Paseo Team Coordinator",
+                  ...fields,
+                  notes: managementPrompt,
+                },
+              ],
+            });
+          } catch (error) {
+            if (configAccessDenied(error)) {
+              state.coordinator.writeAttempted = false;
+              await save(state);
+              throw new Error(
+                "Permission denied updating Agent presets. Restore configuration access, then retry setup.",
+              );
+            }
+            // An acknowledgement can be lost after persistence; verify the same ID.
+          }
+        }
+        const confirmed = (await readProfiles(paseo)).find(
+          (profile) => profile.id === state.coordinator?.id,
+        );
+        if (!confirmed)
+          throw new Error(
+            "Coordinator preset creation was not confirmed. Retry to check the same identity before creating it.",
+          );
+        state.coordinator = { id: confirmed.id, initialized: true };
+        await save(state);
+        return {
+          status: "ready" as const,
+          profile: { id: confirmed.id, name: confirmed.name },
+        };
+      }),
+    async guideNative(paseo: PaseoApi, config: AgentSessionConfig) {
+      if (config.cwd !== directory || config.internal) return config;
       // The creation hook must not queue behind the create operation awaiting it.
       const state = await read();
-      if (
-        !state.workspaceId ||
-        !state.nativeWorkspaceIds.includes(state.workspaceId)
-      )
-        return config;
+      await checkAssociation(paseo, state);
+      if (!state.workspaceId) return config;
+      const resolved = await resolveCoordinator(
+        paseo,
+        state.coordinator,
+        config,
+      );
       return {
-        ...config,
-        systemPrompt: [config.systemPrompt, managementPrompt]
+        ...resolved.config,
+        systemPrompt: [
+          config.systemPrompt,
+          config.systemPrompt?.includes(resolved.notes) ? "" : resolved.notes,
+        ]
           .filter(Boolean)
           .join("\n\n"),
       };
@@ -168,6 +334,19 @@ export function createBot() {
     openWorkspace: (paseo: PaseoApi) =>
       serial(async () => {
         const state = await read();
+        if (state.coordinator && !state.coordinator.initialized) {
+          const existing = (await readProfiles(paseo)).find(
+            (profile) => profile.id === state.coordinator?.id,
+          );
+          if (!existing)
+            throw new Error(
+              "Coordinator preset creation outcome is unknown. Restore configuration access or the original plugin data, then retry; no preset write was repeated.",
+            );
+          state.coordinator = { id: existing.id, initialized: true };
+          state.coordinatorSetupStarted = true;
+          await save(state);
+        }
+        await checkAssociation(paseo, state);
         if (state.workspaceId) {
           if ((await inspect(paseo, state)).state !== "ready")
             throw new Error(
@@ -497,36 +676,17 @@ export function createBot() {
             "Creation outcome unknown. Reconcile before trying another request.",
           );
         }
-        const snapshot = await paseo.providers.waitForReady({ cwd: directory });
-        const provider = snapshot.entries.find(
-          (entry) =>
-            entry.provider === input.config.provider &&
-            entry.enabled &&
-            entry.status === "ready",
+        await checkAssociation(paseo, state);
+        const resolved = await resolveCoordinator(
+          paseo,
+          state.coordinator,
+          {
+            cwd: directory,
+            ...input.config,
+          },
+          true,
         );
-        const model = provider?.models?.find(
-          (model) =>
-            model.id === input.config.model && model.isSelectable !== false,
-        );
-        if (!provider || !model)
-          throw new Error(
-            "The selected provider or model is unavailable. Choose again.",
-          );
-        if (!provider.modes?.some((mode) => mode.id === input.config.modeId))
-          throw new Error(
-            "The selected permission mode is unavailable. Choose again.",
-          );
-        if (model.thinkingOptions?.length && !input.config.thinkingOptionId)
-          throw new Error("Choose a thinking option before sending.");
-        if (
-          input.config.thinkingOptionId &&
-          !model.thinkingOptions?.some(
-            (option) => option.id === input.config.thinkingOptionId,
-          )
-        )
-          throw new Error(
-            "The selected thinking option is unavailable. Choose again.",
-          );
+        const config = configuration.parse(resolved.config);
         if (state.workspaceId) {
           const workspace = await paseo.workspaces
             .ref(state.workspaceId)
@@ -551,7 +711,7 @@ export function createBot() {
         const conversation = {
           id: randomUUID(),
           workspaceId: state.workspaceId,
-          config: input.config,
+          config,
           hash,
         };
         state.requests[input.requestId] = conversation;
@@ -562,10 +722,10 @@ export function createBot() {
             agentId: conversation.id,
             idempotencyKey: input.requestId,
             config: {
-              systemPrompt: managementPrompt,
-              provider: `${input.config.provider}/${input.config.model}`,
-              modeId: input.config.modeId,
-              thinkingOptionId: input.config.thinkingOptionId,
+              provider: `${config.provider}/${config.model}`,
+              modeId: config.modeId,
+              thinkingOptionId: config.thinkingOptionId,
+              featureValues: config.featureValues,
             },
             title: input.text.slice(0, 60),
             prompt: input.text,

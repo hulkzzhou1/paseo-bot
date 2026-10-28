@@ -1,3 +1,5 @@
+> Paseo Team (#15 + #16) uses public `config.get/patch`, Provider catalogs, workspace listing and `agent.create` on app/daemon/SDK 0.13.2. Native and legacy creation share effective runtime validation and inject the dedicated notes once. Blank notes stay blank. A successfully read missing target ID uses valid native/explicit RPC inputs plus the public default rules without rebuilding or binding. Read/permission/model/unknown-state failures are separate. The native picker remains manual; full-list patches have no cross-client CAS. See the [final specification](paseo-team-spec.md), [initial evidence](verification/issue-15.md) and [lifecycle evidence](verification/issue-16.md). No production installation is part of this branch.
+
 > v0.3.0 uses the public native workspace navigation and host-owned creation/preferences/drafts. Bot history includes native root sessions in explicitly opened workspace generations. Earlier custom first-send and device-storage evidence below is historical. Native iOS/Android and Electron remain untested.
 
 # Compatibility evidence

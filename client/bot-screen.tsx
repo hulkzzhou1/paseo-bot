@@ -56,7 +56,7 @@ export function BotScreen({
         accessibilityRole={error ? "alert" : undefined}
         style={{ color: theme.colors.foreground }}
       >
-        {error ?? "Opening Paseo Bot…"}
+        {error ?? "Opening Paseo Team…"}
       </Text>
       {error && (
         <>

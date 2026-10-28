@@ -1,0 +1,44 @@
+{
+  "sourceRevision": "152c0bdfae1cf7055ff77a0e2abcf0adf09da774",
+  "versions": {
+    "app": "0.13.2",
+    "daemon": "0.13.2",
+    "sdk": "0.13.2"
+  },
+  "viewports": [[1120, 900], [390, 844]],
+  "compactWidth": {
+    "viewport": 390,
+    "document": 390
+  },
+  "editedNotesPreserved": true,
+  "emptyNotesPreserved": true,
+  "deletedPresetNotRecreated": true,
+  "fallbackDefaultOnce": true,
+  "historyCount": 3,
+  "agents": [
+    {
+      "id": "f95d96c1-e1b2-4ce5-b7d0-27fb1d9b5904",
+      "workspaceId": "wks_01bcda953095cae5",
+      "model": "test-model",
+      "mode": "approve",
+      "thinking": "brief",
+      "rules": "public-default"
+    },
+    {
+      "id": "47a3ed59-5419-446e-8045-1295943d51a9",
+      "workspaceId": "wks_01bcda953095cae5",
+      "model": "test-model",
+      "mode": "approve",
+      "thinking": "brief",
+      "rules": "empty"
+    },
+    {
+      "id": "1a8d4e91-e216-40b2-9d43-ae47a2c484f1",
+      "workspaceId": "wks_01bcda953095cae5",
+      "model": "test-model",
+      "mode": "approve",
+      "thinking": "brief",
+      "rules": "edited"
+    }
+  ]
+}

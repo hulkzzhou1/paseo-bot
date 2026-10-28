@@ -15,13 +15,20 @@ import { createBot } from "./server/bot.ts";
 import { createDelivery } from "./server/delivery.ts";
 import { submitDelivery, reconcileDelivery } from "./shared/delivery.ts";
 import { stopConversation, respondConversation } from "./shared/execution.ts";
+import { prepareCoordinator } from "./shared/coordinator.ts";
 export default function contribute(server: PluginServerContext) {
   const bot = createBot();
   const delivery = createDelivery(bot);
-  const unguide = server.before("agent.create", async ({ request }) => ({
-    ...request,
-    config: await bot.guideNative(request.config),
-  }));
+  server.handle(prepareCoordinator, ({ sourceProfileId }, { paseo }) =>
+    bot.prepareCoordinator(paseo, sourceProfileId),
+  );
+  const unguide = server.before(
+    "agent.create",
+    async ({ request }, { paseo }) => ({
+      ...request,
+      config: await bot.guideNative(paseo, request.config),
+    }),
+  );
   server.handle(openWorkspace, (_, { paseo }) => bot.openWorkspace(paseo));
   server.handle(submitDelivery, (input, { paseo }) =>
     delivery.submit(paseo, input),
