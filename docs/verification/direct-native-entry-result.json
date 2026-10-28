@@ -1,0 +1,17 @@
+{
+  "sourceRevision": "7389f157dff723baa995c11aea525b8d2946d3e5",
+  "browserAppDaemon": "0.14.0-beta.1",
+  "clientSdk": "0.13.2",
+  "baselineDaemonTests": "0.13.2",
+  "desktopViewport": [1120, 900],
+  "compactViewport": [390, 844],
+  "compactDocumentWidth": 390,
+  "firstEntryNative": true,
+  "sourceChooserShown": false,
+  "intermediateOpenButtonShown": false,
+  "readFailureRetryReturnsNative": true,
+  "emptyAgentCount": 0,
+  "presetsChanged": false,
+  "dedicatedAssociationCreated": false,
+  "betaFixtureModelTest": "blocked: Provider bot-test is not configured; beta model/Provider acceptance not claimed"
+}
