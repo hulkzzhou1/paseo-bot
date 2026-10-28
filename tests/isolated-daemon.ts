@@ -16,9 +16,15 @@ import {
 import { createPaseoApi } from "@getpaseo/client";
 import { hashDaemonPassword } from "@getpaseo/server/auth";
 import { createHostClient } from "@getpaseo/client/node";
+import { installConfigFaultFixture } from "./config-faults.ts";
 
 export async function createIsolatedDaemon(
-  options: { keep?: boolean; port?: number; fixture?: boolean } = {},
+  options: {
+    keep?: boolean;
+    port?: number;
+    fixture?: boolean;
+    configFaults?: boolean;
+  } = {},
 ) {
   const home = await mkdtemp(join(tmpdir(), "paseo-bot-test-"));
   const reservation = createServer();
@@ -30,6 +36,9 @@ export async function createIsolatedDaemon(
     throw new Error("No loopback port");
   const port = options.port ?? allocated.port;
   const password = randomUUID();
+  const pluginPath = options.configFaults
+    ? await installConfigFaultFixture(home)
+    : resolve(".");
   await new Promise<void>((resolve) => reservation.close(() => resolve()));
   await writeFile(
     join(home, "config.json"),
@@ -42,7 +51,7 @@ export async function createIsolatedDaemon(
       features: { webUi: { enabled: true } },
       pluginsEnabled: true,
       plugins: {
-        "paseo-bot": { source: "directory", path: resolve("."), enabled: true },
+        "paseo-bot": { source: "directory", path: pluginPath, enabled: true },
         ...(options.fixture
           ? {
               "bot-test-provider": {
@@ -56,46 +65,49 @@ export async function createIsolatedDaemon(
     }),
   );
   const logPath = join(home, "daemon.log");
-  const child = spawn(
-    process.env.PASEO_TEST_CLI ?? "paseo",
-    ["daemon", "run", "--home", home],
-    {
-      env: {
-        ...Object.fromEntries(
-          Object.entries(process.env).filter(
-            ([key]) => !key.startsWith("PASEO_"),
-          ),
-        ),
-        PASEO_HOME: home,
-        PASEO_LISTEN: `127.0.0.1:${port}`,
-        PASEO_RELAY_ENABLED: "false",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
   const output: string[] = [];
-  child.stdout.on("data", (chunk) => output.push(String(chunk)));
-  child.stderr.on("data", (chunk) => output.push(String(chunk)));
+  function launch() {
+    const daemonProcess = spawn(
+      process.env.PASEO_TEST_CLI ?? "paseo",
+      ["daemon", "run", "--home", home],
+      {
+        env: {
+          ...Object.fromEntries(
+            Object.entries(process.env).filter(
+              ([key]) => !key.startsWith("PASEO_"),
+            ),
+          ),
+          PASEO_HOME: home,
+          PASEO_LISTEN: `127.0.0.1:${port}`,
+          PASEO_RELAY_ENABLED: "false",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    daemonProcess.stdout.on("data", (chunk) => output.push(String(chunk)));
+    daemonProcess.stderr.on("data", (chunk) => output.push(String(chunk)));
+    return daemonProcess;
+  }
+  let child = launch();
   const driver = createHostClient(`ws://127.0.0.1:${port}/ws`, {
     clientId: randomUUID(),
     appVersion: "0.13.2",
     password,
     reconnect: { enabled: false },
   });
-  let ready = false;
-  for (let attempt = 0; attempt < 100; attempt++) {
-    try {
-      await driver.connect();
-      ready = true;
-      break;
-    } catch {
-      await delay(150);
+  async function connect() {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      try {
+        await driver.connect();
+        return;
+      } catch {
+        await delay(150);
+      }
     }
-  }
-  if (!ready) {
     child.kill("SIGTERM");
-    throw new Error(output.join(""));
+    throw new Error("Isolated daemon did not accept a connection");
   }
+  await connect();
   const client = createPaseoApi(driver);
   function rpc(
     method: "bootstrap",
@@ -129,29 +141,43 @@ export async function createIsolatedDaemon(
       )?.output.parse(output) ?? output
     );
   }
-  for (let attempt = 0; attempt < 100; attempt++) {
-    try {
-      await rpc("bootstrap", {});
-      break;
-    } catch (error) {
-      if (attempt === 99) {
-        child.kill("SIGTERM");
-        throw error;
+  async function ready() {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      try {
+        await rpc("bootstrap", {});
+        break;
+      } catch (error) {
+        if (attempt === 99) {
+          child.kill("SIGTERM");
+          throw error;
+        }
+        await delay(150);
       }
-      await delay(150);
     }
   }
+  await ready();
   return {
     home,
     port,
     password,
+    pluginPath,
     client,
     rpc,
+    async restart() {
+      child.kill("SIGTERM");
+      await once(child, "exit");
+      await delay(100);
+      child = launch();
+      await connect();
+      await ready();
+    },
     async close() {
       await client.dispose();
       await driver.close();
-      child.kill("SIGTERM");
-      await once(child, "exit");
+      if (child.exitCode === null) {
+        child.kill("SIGTERM");
+        await once(child, "exit");
+      }
       await writeFile(logPath, output.join(""));
       if (!options.keep) await rm(home, { recursive: true, force: true });
     },

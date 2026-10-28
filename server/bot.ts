@@ -10,6 +10,7 @@ import {
   readProfiles,
   runtimeFields,
   resolveCoordinator,
+  configAccessDenied,
 } from "./coordinator.ts";
 import { executeCli } from "./cli.ts";
 import {
@@ -29,8 +30,13 @@ const record = z.object({
 });
 const stateSchema = z.object({
   installationId: z.string(),
+  coordinatorSetupStarted: z.literal(true).optional(),
   coordinator: z
-    .object({ id: z.string(), initialized: z.boolean() })
+    .object({
+      id: z.string(),
+      initialized: z.boolean(),
+      writeAttempted: z.boolean().optional(),
+    })
     .optional(),
   workspaceId: z.string().nullable(),
   nativeWorkspaceIds: z.array(z.string()).default([]),
@@ -50,15 +56,27 @@ export function createBot() {
     "bot",
   );
   let queue: Promise<unknown> = Promise.resolve();
+  let stateSeen = false;
   async function read(): Promise<z.infer<typeof stateSchema>> {
-    await mkdir(root, { recursive: true, mode: 0o700 });
+    const created = await mkdir(root, { recursive: true, mode: 0o700 });
     await mkdir(directory, { recursive: true, mode: 0o700 });
     try {
-      return stateSchema.parse(
+      const state = stateSchema.parse(
         JSON.parse(await readFile(join(root, "state.json"), "utf8")),
       );
+      if (state.coordinatorSetupStarted && !state.coordinator)
+        throw new Error("Coordinator association is missing");
+      stateSeen = true;
+      return state;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+        throw new Error(
+          "Bot state could not be read; the Coordinator association is unknown. Restore the plugin data and retry.",
+        );
+      if (!created || stateSeen)
+        throw new Error(
+          "Bot state is missing; the Coordinator association is unknown. Restore the plugin data and retry.",
+        );
       const state = {
         installationId: randomUUID(),
         workspaceId: null,
@@ -69,6 +87,7 @@ export function createBot() {
         archivedWorkspaces: {},
       };
       await save(state);
+      stateSeen = true;
       return state;
     }
   }
@@ -76,6 +95,40 @@ export function createBot() {
     const temporary = join(root, "state.tmp");
     await writeFile(temporary, JSON.stringify(state), { mode: 0o600 });
     await rename(temporary, join(root, "state.json"));
+  }
+  async function checkAssociation(
+    paseo: PaseoApi,
+    state: z.infer<typeof stateSchema>,
+    profiles?: Awaited<ReturnType<typeof readProfiles>>,
+  ) {
+    if (state.coordinator) return;
+    const unknown = () =>
+      new Error(
+        "Coordinator association is unknown. Existing resources survived without their saved association; restore the original plugin data before setup.",
+      );
+    if (
+      (profiles ?? (await readProfiles(paseo))).some((profile) =>
+        profile.id.startsWith("paseo-bot-"),
+      )
+    )
+      throw unknown();
+    if (state.workspaceId) return;
+    let cursor: string | undefined;
+    do {
+      const page = await paseo.workspaces.list({
+        filter: { includeBackground: true },
+        page: { limit: 100, cursor },
+      });
+      if (
+        page.entries.some(
+          (workspace) => workspace.workspaceDirectory === directory,
+        )
+      )
+        throw unknown();
+      cursor = page.pageInfo.hasMore
+        ? (page.pageInfo.nextCursor ?? undefined)
+        : undefined;
+    } while (cursor);
   }
   function serial<T>(fn: () => Promise<T>): Promise<T> {
     const result = queue.then(fn);
@@ -156,10 +209,15 @@ export function createBot() {
       serial(async () => {
         const state = await read();
         let profiles = await readProfiles(paseo);
+        await checkAssociation(paseo, state, profiles);
         const existing = profiles.find(
           (profile) => profile.id === state.coordinator?.id,
         );
         if (existing || state.coordinator?.initialized) {
+          if (!state.coordinatorSetupStarted) {
+            state.coordinatorSetupStarted = true;
+            await save(state);
+          }
           if (existing && !state.coordinator?.initialized) {
             state.coordinator = { id: existing.id, initialized: true };
             await save(state);
@@ -169,6 +227,10 @@ export function createBot() {
             profile: existing ? { id: existing.id, name: existing.name } : null,
           };
         }
+        if (state.coordinator && state.coordinator.writeAttempted !== false)
+          throw new Error(
+            "Coordinator preset creation outcome is unknown. Reopen to check the same identity; an unconfirmed write will not be repeated.",
+          );
         if (!sourceProfileId)
           return {
             status: "choose-source" as const,
@@ -183,9 +245,11 @@ export function createBot() {
         if (!profiles.some((profile) => profile.id === sourceProfileId))
           throw new Error("Choose an existing source preset.");
         if (!state.coordinator) {
+          state.coordinatorSetupStarted = true;
           state.coordinator = {
             id: `paseo-bot-${randomUUID()}`,
             initialized: false,
+            writeAttempted: false,
           };
           await save(state);
         }
@@ -207,6 +271,8 @@ export function createBot() {
             throw new Error(
               "Set an explicit provider and model in the source preset, then retry.",
             );
+          state.coordinator.writeAttempted = true;
+          await save(state);
           try {
             await paseo.config.patch({
               agentProfiles: [
@@ -219,7 +285,14 @@ export function createBot() {
                 },
               ],
             });
-          } catch {
+          } catch (error) {
+            if (configAccessDenied(error)) {
+              state.coordinator.writeAttempted = false;
+              await save(state);
+              throw new Error(
+                "Permission denied updating Agent presets. Restore configuration access, then retry setup.",
+              );
+            }
             // An acknowledgement can be lost after persistence; verify the same ID.
           }
         }
@@ -230,7 +303,7 @@ export function createBot() {
           throw new Error(
             "Coordinator preset creation was not confirmed. Retry to check the same identity before creating it.",
           );
-        state.coordinator.initialized = true;
+        state.coordinator = { id: confirmed.id, initialized: true };
         await save(state);
         return {
           status: "ready" as const,
@@ -241,6 +314,7 @@ export function createBot() {
       if (config.cwd !== directory || config.internal) return config;
       // The creation hook must not queue behind the create operation awaiting it.
       const state = await read();
+      await checkAssociation(paseo, state);
       if (!state.workspaceId) return config;
       const resolved = await resolveCoordinator(
         paseo,
@@ -260,6 +334,7 @@ export function createBot() {
     openWorkspace: (paseo: PaseoApi) =>
       serial(async () => {
         const state = await read();
+        await checkAssociation(paseo, state);
         if (state.workspaceId) {
           if ((await inspect(paseo, state)).state !== "ready")
             throw new Error(
@@ -589,6 +664,7 @@ export function createBot() {
             "Creation outcome unknown. Reconcile before trying another request.",
           );
         }
+        await checkAssociation(paseo, state);
         const resolved = await resolveCoordinator(
           paseo,
           state.coordinator,
@@ -599,35 +675,6 @@ export function createBot() {
           true,
         );
         const config = configuration.parse(resolved.config);
-        const snapshot = await paseo.providers.waitForReady({ cwd: directory });
-        const provider = snapshot.entries.find(
-          (entry) =>
-            entry.provider === config.provider &&
-            entry.enabled &&
-            entry.status === "ready",
-        );
-        const model = provider?.models?.find(
-          (model) => model.id === config.model && model.isSelectable !== false,
-        );
-        if (!provider || !model)
-          throw new Error(
-            "The selected provider or model is unavailable. Choose again.",
-          );
-        if (!provider.modes?.some((mode) => mode.id === config.modeId))
-          throw new Error(
-            "The selected permission mode is unavailable. Choose again.",
-          );
-        if (model.thinkingOptions?.length && !config.thinkingOptionId)
-          throw new Error("Choose a thinking option before sending.");
-        if (
-          config.thinkingOptionId &&
-          !model.thinkingOptions?.some(
-            (option) => option.id === config.thinkingOptionId,
-          )
-        )
-          throw new Error(
-            "The selected thinking option is unavailable. Choose again.",
-          );
         if (state.workspaceId) {
           const workspace = await paseo.workspaces
             .ref(state.workspaceId)

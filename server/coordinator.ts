@@ -3,10 +3,23 @@ import type { AgentProfile } from "@getpaseo/protocol/messages";
 import type { AgentSessionConfig } from "@getpaseo/protocol/agent-types";
 import { managementPrompt } from "./management.ts";
 
+export function configAccessDenied(error: unknown) {
+  return (
+    error !== null &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error.code === "access_denied" || error.code === "permission_denied")
+  );
+}
+
 export async function readProfiles(paseo: PaseoApi) {
   try {
     return (await paseo.config.get()).config.agentProfiles ?? [];
-  } catch {
+  } catch (error) {
+    if (configAccessDenied(error))
+      throw new Error(
+        "Permission denied reading Agent presets. Restore configuration access and retry; this does not confirm preset deletion.",
+      );
     throw new Error(
       "Could not read Agent presets. Check the connection and retry; the preset state is unknown.",
     );
@@ -29,7 +42,7 @@ export async function resolveCoordinator(
   paseo: PaseoApi,
   association: { id: string; initialized: boolean } | undefined,
   input: AgentSessionConfig,
-  requireProfileModel = false,
+  legacy = false,
 ) {
   if (association && !association.initialized)
     throw new Error(
@@ -40,27 +53,59 @@ export async function resolveCoordinator(
         (profile) => profile.id === association.id,
       )
     : undefined;
-  if (!profile) return { config: input, notes: managementPrompt };
-  const fields = runtimeFields(profile);
-  if (
-    fields.provider !== input.provider ||
-    (fields.modeId && fields.modeId !== input.modeId)
-  )
-    throw new Error(
-      `Select the Coordinator preset “${profile.name}” in the native picker before sending. Its provider and permission mode must match; explicit RPC input must match too.`,
-    );
-  if (requireProfileModel && !fields.model)
-    throw new Error(
-      "Set an explicit model in the Coordinator preset before using legacy creation.",
-    );
-  return {
-    config: {
+  let config = input;
+  if (profile) {
+    const fields = runtimeFields(profile);
+    if (
+      fields.provider !== input.provider ||
+      (fields.modeId && fields.modeId !== input.modeId)
+    )
+      throw new Error(
+        `Select the Coordinator preset “${profile.name}” in the native picker before sending. Its provider and permission mode must match; explicit RPC input must match too.`,
+      );
+    if (legacy && !fields.model)
+      throw new Error(
+        "Set an explicit model in the Coordinator preset before using legacy creation.",
+      );
+    config = {
       ...input,
       ...fields,
       ...(fields.featureValues
         ? { featureValues: { ...input.featureValues, ...fields.featureValues } }
         : {}),
-    },
-    notes: profile.notes ?? "",
-  };
+    };
+  }
+  const snapshot = await paseo.providers.waitForReady({ cwd: input.cwd });
+  const provider = snapshot.entries.find(
+    (entry) =>
+      entry.provider === config.provider &&
+      entry.enabled &&
+      entry.status === "ready",
+  );
+  const model = provider?.models?.find(
+    (model) => model.id === config.model && model.isSelectable !== false,
+  );
+  if (!provider || (config.model && !model))
+    throw new Error(
+      "The selected provider or model is unavailable. Choose again.",
+    );
+  if (
+    config.modeId &&
+    !provider.modes?.some((mode) => mode.id === config.modeId)
+  )
+    throw new Error(
+      "The selected permission mode is unavailable. Choose again.",
+    );
+  if (legacy && model?.thinkingOptions?.length && !config.thinkingOptionId)
+    throw new Error("Choose a thinking option before sending.");
+  if (
+    config.thinkingOptionId &&
+    !model?.thinkingOptions?.some(
+      (option) => option.id === config.thinkingOptionId,
+    )
+  )
+    throw new Error(
+      "The selected thinking option is unavailable. Choose again.",
+    );
+  return { config, notes: profile ? (profile.notes ?? "") : managementPrompt };
 }

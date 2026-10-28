@@ -148,11 +148,13 @@ export function BotScreen({
               ? `Before sending a new conversation, choose “${setup.profile.name}” in the native preset picker. Its notes are loaded as Coordinator rules once; edit them and runtime settings in Settings → Agent profiles. Existing conversations keep their saved rules.`
               : "The dedicated preset is missing. New conversations use the native configuration and the public default coordination rules. The preset will not be recreated."}
           </Text>
-          <Text style={{ color: theme.colors.foregroundMuted }}>
-            Paseo cannot preselect this preset through its public plugin API. A
-            conflicting provider or permission mode will ask you to select it
-            before sending.
-          </Text>
+          {setup.profile && (
+            <Text style={{ color: theme.colors.foregroundMuted }}>
+              Paseo cannot preselect this preset through its public plugin API.
+              A conflicting provider or permission mode will ask you to select
+              it before sending.
+            </Text>
+          )}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Open Team workspace"
