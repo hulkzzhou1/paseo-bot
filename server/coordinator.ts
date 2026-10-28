@@ -8,7 +8,7 @@ export async function readProfiles(paseo: PaseoApi) {
     return (await paseo.config.get()).config.agentProfiles ?? [];
   } catch {
     throw new Error(
-      "Could not read Agent presets. Check the connection and retry; no preset was changed.",
+      "Could not read Agent presets. Check the connection and retry; the preset state is unknown.",
     );
   }
 }
