@@ -82,9 +82,17 @@ export async function resolveCoordinator(
       entry.enabled &&
       entry.status === "ready",
   );
-  const model = provider?.models?.find(
-    (model) => model.id === config.model && model.isSelectable !== false,
-  );
+  const models =
+    provider?.models?.filter((model) => model.isSelectable !== false) ?? [];
+  // Match host validation without filling omitted native configuration fields.
+  const requestedModel = config.model;
+  const model = requestedModel
+    ? models.find(
+        (model) =>
+          model.id === requestedModel ||
+          model.aliases?.includes(requestedModel),
+      )
+    : (models.find((model) => model.isDefault) ?? models[0]);
   if (!provider || (config.model && !model))
     throw new Error(
       "The selected provider or model is unavailable. Choose again.",

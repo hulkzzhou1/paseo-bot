@@ -6,6 +6,7 @@ import type {
 const models = [
   {
     id: "test-model",
+    aliases: ["test-alias"],
     label: "Test model",
     thinkingOptions: [{ id: "brief", label: "Brief" }],
   },

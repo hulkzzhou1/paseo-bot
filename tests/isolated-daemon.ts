@@ -162,6 +162,7 @@ export async function createIsolatedDaemon(
     password,
     pluginPath,
     client,
+    driver,
     rpc,
     async restart() {
       child.kill("SIGTERM");

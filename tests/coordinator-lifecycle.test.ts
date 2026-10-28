@@ -337,6 +337,39 @@ test("confirmed deletion keeps both creation paths open using explicit runtime i
   }
 });
 
+test("native fallback retains host default-model and alias semantics", {
+  timeout: 60000,
+}, async () => {
+  const daemon = await createIsolatedDaemon({ fixture: true });
+  try {
+    const { profileId, workspaceId } = await setup(daemon);
+    const profiles =
+      (await daemon.client.config.get()).config.agentProfiles ?? [];
+    await daemon.client.config.patch({
+      agentProfiles: profiles.filter((profile) => profile.id !== profileId),
+    });
+    const { directory } = await daemon.rpc("bootstrap", {});
+    for (const model of [undefined, "test-alias"]) {
+      const agent = await daemon.driver.createAgent({
+        workspaceId,
+        config: {
+          provider: "bot-test",
+          cwd: directory,
+          modeId: "approve",
+          thinkingOptionId: "brief",
+          ...(model ? { model } : {}),
+        },
+        initialPrompt: "inspect-bot-config",
+      });
+      const actual = await inspect(daemon, agent.id);
+      assert.equal(actual.thinkingOption, "brief");
+      assert.equal(actual.systemPrompt.split("你是 Paseo Bot").length - 1, 1);
+    }
+  } finally {
+    await daemon.close();
+  }
+});
+
 test("configuration read denial and unavailability fail both creation paths rather than activating deletion fallback", {
   timeout: 60000,
 }, async () => {
