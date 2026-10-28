@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { createIsolatedDaemon } from "./isolated-daemon.ts";
 import { createHostClient } from "@getpaseo/client/node";
 
-test("first entry copies an explicitly chosen source into one dedicated Coordinator preset without creating an Agent", {
+test("explicit legacy setup copies a source into one dedicated Coordinator preset without creating an Agent", {
   timeout: 60000,
 }, async () => {
   const daemon = await createIsolatedDaemon({ fixture: true });
@@ -145,7 +145,7 @@ test("a Coordinator provider or permission conflict fails before creating or sen
   }
 });
 
-test("opening native Bot workspace is concurrent-safe and creates no Agent", {
+test("native entry needs no preset setup, is concurrent-safe and creates no Agent until sending", {
   timeout: 60000,
 }, async () => {
   const daemon = await createIsolatedDaemon({ fixture: true });
@@ -165,6 +165,34 @@ test("opening native Bot workspace is concurrent-safe and creates no Agent", {
     assert.equal(workspace?.background, true);
     const agents = await daemon.client.agents.list();
     assert.equal(agents.entries.length, 0);
+    assert.deepEqual(
+      (await daemon.client.config.get()).config.agentProfiles ?? [],
+      [],
+    );
+    const native = await daemon.client.workspaces
+      .ref(first.workspaceId)
+      .agents.create({
+        config: {
+          provider: "bot-test/test-model",
+          modeId: "approve",
+          thinkingOptionId: "brief",
+        },
+        prompt: "inspect-bot-config",
+      });
+    await native.waitForFinish(10000);
+    const reply = (await native.timeline.refetch()).entries.find(
+      ({ item }) => item.type === "assistant_message",
+    );
+    assert.ok(reply?.item.type === "assistant_message");
+    const actual = JSON.parse(reply.item.text);
+    assert.equal(actual.systemPrompt.split("你是 Paseo Bot").length - 1, 1);
+    assert.equal(actual.mode, "approve");
+    assert.equal(actual.model, "test-model");
+    assert.equal(actual.thinkingOption, "brief");
+    assert.deepEqual(
+      (await daemon.client.config.get()).config.agentProfiles ?? [],
+      [],
+    );
   } finally {
     await daemon.close();
   }

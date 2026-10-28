@@ -1,5 +1,7 @@
 # Issues #15 + #16 — final Coordinator preset lifecycle
 
+> Later user feedback removes both setup and intermediate entry pages. [Direct native entry acceptance](direct-native-entry.md) records that subsequent change; this document preserves evidence for the revisions named below.
+
 Branch `feat/paseo-team-profiles` continues the approved native-workspace integration baseline `9df62016bc8de1978b1be4b6bed336ee3383ebca` and #15 delivery `3882a462d63a0cb6d787651899061b57695bc3dd`, using the same draft PR #17 targeting `integration/paseo-bot`. No production installation, reload, configuration change, deployment, merge, publication or real external platform write is authorized or performed here.
 
 ## Final behavior

@@ -1,5 +1,7 @@
 # Issue #15 — dedicated Coordinator preset
 
+> Later user feedback removes both setup and intermediate entry pages. [Direct native entry acceptance](direct-native-entry.md) records that subsequent change; this document preserves evidence for the revisions named below.
+
 Historical first-ticket acceptance at `3882a462`. The [#16 record](issue-16.md) contains the subsequent combined lifecycle implementation and final review; the deferred matrix described below is no longer the current branch status.
 
 Work branch: `feat/paseo-team-profiles`, based on `integration/paseo-bot` at `9df62016bc8de1978b1be4b6bed336ee3383ebca`. This record covers #15; #16 remains a separate follow-up. No production plugin installation, configuration change, daemon restart, merge or release was performed.
