@@ -6,6 +6,11 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { inspectArchivedWorkspace } from "./workspace-status.ts";
 import { managementPrompt } from "./management.ts";
+import {
+  readProfiles,
+  runtimeFields,
+  resolveCoordinator,
+} from "./coordinator.ts";
 import { executeCli } from "./cli.ts";
 import {
   questionsSchema,
@@ -24,6 +29,9 @@ const record = z.object({
 });
 const stateSchema = z.object({
   installationId: z.string(),
+  coordinator: z
+    .object({ id: z.string(), initialized: z.boolean() })
+    .optional(),
   workspaceId: z.string().nullable(),
   nativeWorkspaceIds: z.array(z.string()).default([]),
   requests: z.record(z.string(), record),
@@ -144,23 +152,107 @@ export function createBot() {
     return { workspaceId: state.workspaceId, state: status };
   }
   return {
-    async guideNative(config: AgentSessionConfig) {
-      if (
-        config.cwd !== directory ||
-        config.internal ||
-        config.systemPrompt?.includes(managementPrompt)
-      )
-        return config;
+    prepareCoordinator: (paseo: PaseoApi, sourceProfileId?: string) =>
+      serial(async () => {
+        const state = await read();
+        let profiles = await readProfiles(paseo);
+        const existing = profiles.find(
+          (profile) => profile.id === state.coordinator?.id,
+        );
+        if (existing || state.coordinator?.initialized) {
+          if (existing && !state.coordinator?.initialized) {
+            state.coordinator = { id: existing.id, initialized: true };
+            await save(state);
+          }
+          return {
+            status: "ready" as const,
+            profile: existing ? { id: existing.id, name: existing.name } : null,
+          };
+        }
+        if (!sourceProfileId)
+          return {
+            status: "choose-source" as const,
+            sources: profiles.map(({ id, name, provider, model, modeId }) => ({
+              id,
+              name,
+              provider,
+              model,
+              modeId,
+            })),
+          };
+        if (!profiles.some((profile) => profile.id === sourceProfileId))
+          throw new Error("Choose an existing source preset.");
+        if (!state.coordinator) {
+          state.coordinator = {
+            id: `paseo-bot-${randomUUID()}`,
+            initialized: false,
+          };
+          await save(state);
+        }
+        // Fresh read immediately before the whole-list patch narrows the edit race.
+        profiles = await readProfiles(paseo);
+        const recovered = profiles.find(
+          (profile) => profile.id === state.coordinator?.id,
+        );
+        if (!recovered) {
+          const source = profiles.find(
+            (profile) => profile.id === sourceProfileId,
+          );
+          if (!source)
+            throw new Error(
+              "The source preset changed. Refresh and choose again.",
+            );
+          const fields = runtimeFields(source);
+          if (!fields.provider || !fields.model)
+            throw new Error(
+              "Set an explicit provider and model in the source preset, then retry.",
+            );
+          try {
+            await paseo.config.patch({
+              agentProfiles: [
+                ...profiles,
+                {
+                  id: state.coordinator.id,
+                  name: "Paseo Team Coordinator",
+                  ...fields,
+                  notes: managementPrompt,
+                },
+              ],
+            });
+          } catch {
+            // An acknowledgement can be lost after persistence; verify the same ID.
+          }
+        }
+        const confirmed = (await readProfiles(paseo)).find(
+          (profile) => profile.id === state.coordinator?.id,
+        );
+        if (!confirmed)
+          throw new Error(
+            "Coordinator preset creation was not confirmed. Retry to check the same identity before creating it.",
+          );
+        state.coordinator.initialized = true;
+        await save(state);
+        return {
+          status: "ready" as const,
+          profile: { id: confirmed.id, name: confirmed.name },
+        };
+      }),
+    async guideNative(paseo: PaseoApi, config: AgentSessionConfig) {
+      if (config.cwd !== directory || config.internal) return config;
       // The creation hook must not queue behind the create operation awaiting it.
       const state = await read();
-      if (
-        !state.workspaceId ||
-        !state.nativeWorkspaceIds.includes(state.workspaceId)
-      )
-        return config;
+      if (!state.workspaceId) return config;
+      const resolved = await resolveCoordinator(
+        paseo,
+        state.coordinator,
+        config,
+      );
       return {
-        ...config,
-        systemPrompt: [config.systemPrompt, managementPrompt]
+        ...resolved.config,
+        systemPrompt: [
+          config.systemPrompt,
+          config.systemPrompt?.includes(resolved.notes) ? "" : resolved.notes,
+        ]
           .filter(Boolean)
           .join("\n\n"),
       };
@@ -497,31 +589,40 @@ export function createBot() {
             "Creation outcome unknown. Reconcile before trying another request.",
           );
         }
+        const resolved = await resolveCoordinator(
+          paseo,
+          state.coordinator,
+          {
+            cwd: directory,
+            ...input.config,
+          },
+          true,
+        );
+        const config = configuration.parse(resolved.config);
         const snapshot = await paseo.providers.waitForReady({ cwd: directory });
         const provider = snapshot.entries.find(
           (entry) =>
-            entry.provider === input.config.provider &&
+            entry.provider === config.provider &&
             entry.enabled &&
             entry.status === "ready",
         );
         const model = provider?.models?.find(
-          (model) =>
-            model.id === input.config.model && model.isSelectable !== false,
+          (model) => model.id === config.model && model.isSelectable !== false,
         );
         if (!provider || !model)
           throw new Error(
             "The selected provider or model is unavailable. Choose again.",
           );
-        if (!provider.modes?.some((mode) => mode.id === input.config.modeId))
+        if (!provider.modes?.some((mode) => mode.id === config.modeId))
           throw new Error(
             "The selected permission mode is unavailable. Choose again.",
           );
-        if (model.thinkingOptions?.length && !input.config.thinkingOptionId)
+        if (model.thinkingOptions?.length && !config.thinkingOptionId)
           throw new Error("Choose a thinking option before sending.");
         if (
-          input.config.thinkingOptionId &&
+          config.thinkingOptionId &&
           !model.thinkingOptions?.some(
-            (option) => option.id === input.config.thinkingOptionId,
+            (option) => option.id === config.thinkingOptionId,
           )
         )
           throw new Error(
@@ -551,7 +652,7 @@ export function createBot() {
         const conversation = {
           id: randomUUID(),
           workspaceId: state.workspaceId,
-          config: input.config,
+          config,
           hash,
         };
         state.requests[input.requestId] = conversation;
@@ -562,10 +663,10 @@ export function createBot() {
             agentId: conversation.id,
             idempotencyKey: input.requestId,
             config: {
-              systemPrompt: managementPrompt,
-              provider: `${input.config.provider}/${input.config.model}`,
-              modeId: input.config.modeId,
-              thinkingOptionId: input.config.thinkingOptionId,
+              provider: `${config.provider}/${config.model}`,
+              modeId: config.modeId,
+              thinkingOptionId: config.thinkingOptionId,
+              featureValues: config.featureValues,
             },
             title: input.text.slice(0, 60),
             prompt: input.text,

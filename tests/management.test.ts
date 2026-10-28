@@ -37,18 +37,22 @@ test("only Bot conversations receive local management guidance without changing 
     }
     const actual = await configuration(bot.id);
     assert.match(actual.systemPrompt, /Paseo Bot/);
-    assert.match(actual.systemPrompt, /background:false/);
-    assert.match(actual.systemPrompt, /notifyOnFinish:true/);
-    assert.match(actual.systemPrompt, /clarif/i);
+    assert.match(actual.systemPrompt, /理解当前意图/);
+    assert.match(actual.systemPrompt, /不强制固定阶段或技能链/);
+    assert.match(actual.systemPrompt, /沿用已有明确授权/);
+    assert.match(actual.systemPrompt, /项目 Agent 负责具体项目工作/);
     assert.equal(actual.mode, "approve");
     assert.equal(actual.preapproved, 0);
     assert.deepEqual(actual.mcpServers, []);
-    const outside = await daemon.client.workspaces
-      .ref(bot.workspaceId)
-      .agents.create({
-        config: { provider: "bot-test/test-model", modeId: "approve" },
-        prompt: "inspect-bot-config",
-      });
+    const businessPath = join(daemon.home, "business");
+    await mkdir(businessPath);
+    const business = await daemon.client.workspaces.create({
+      source: { kind: "directory", path: businessPath },
+    });
+    const outside = await business.agents.create({
+      config: { provider: "bot-test/test-model", modeId: "approve" },
+      prompt: "inspect-bot-config",
+    });
     const unchanged = await configuration(outside.id);
     assert.equal(unchanged.systemPrompt, undefined);
     assert.equal(unchanged.mode, "approve");

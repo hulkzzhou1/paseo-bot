@@ -49,9 +49,14 @@ export default function contribute(client: PluginClientContext) {
   };
   client.addScreen({
     id: "bot",
-    title: "Paseo Bot",
+    title: "Paseo Team",
     Component: (props) => (
-      <BotScreen {...props} onOpened={onOpened} onHistory={openHistory} />
+      <BotScreen
+        key={props.host.id}
+        {...props}
+        onOpened={onOpened}
+        onHistory={openHistory}
+      />
     ),
   });
   client.addScreen({
@@ -66,7 +71,7 @@ export default function contribute(client: PluginClientContext) {
   });
   client.addSidebarHeaderItem({
     id: "bot",
-    title: "Paseo Bot",
+    title: "Paseo Team",
     Component: BotSidebar,
   });
   return () => {

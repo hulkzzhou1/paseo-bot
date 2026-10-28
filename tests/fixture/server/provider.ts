@@ -9,8 +9,16 @@ const models = [
     label: "Test model",
     thinkingOptions: [{ id: "brief", label: "Brief" }],
   },
+  {
+    id: "second-model",
+    label: "Second test model",
+    thinkingOptions: [{ id: "deep", label: "Deep" }],
+  },
 ];
-const modes = [{ id: "approve", label: "Ask for approval" }];
+const modes = [
+  { id: "approve", label: "Ask for approval" },
+  { id: "bypass", label: "Bypass approval (test only)" },
+];
 export const provider: ProviderRegistration = {
   id: "bot-test",
   label: "Bot test provider",
@@ -25,6 +33,9 @@ export const provider: ProviderRegistration = {
         mode?: string;
         preapproved: number;
         mcpServers: string[];
+        model?: string;
+        thinkingOption?: string;
+        settings: Readonly<Record<string, unknown>>;
       }
     >();
     const turns = new Map<string, { id: string; scenario: string }>();
@@ -75,6 +86,9 @@ export const provider: ProviderRegistration = {
           configurations.set(input.sessionId, {
             systemPrompt: input.config.systemPrompt,
             mode: input.config.mode,
+            model: input.config.model,
+            thinkingOption: input.config.thinkingOption,
+            settings: input.config.settings,
             preapproved: input.config.toolPolicy?.preapproved.length ?? 0,
             mcpServers: Object.keys(input.config.mcpServers),
           });
@@ -113,11 +127,14 @@ export const provider: ProviderRegistration = {
             type: "session.config",
             sessionId: input.sessionId,
             config: {
-              model: "test-model",
-              mode: "approve",
+              model: input.config.model ?? "test-model",
+              mode: input.config.mode ?? "approve",
               models,
               modes,
-              thinkingOptions: [],
+              thinkingOption: input.config.thinkingOption,
+              thinkingOptions:
+                models.find((model) => model.id === input.config.model)
+                  ?.thinkingOptions ?? [],
               settings: [],
             },
           });

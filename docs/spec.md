@@ -126,3 +126,7 @@ Bot 持续承接用户目标，通过交流形成共识，并组织合适的项�
 ## Project context through Agent consultation (confirmed 2026-10-28)
 
 Bot 组织相关 Agent 提供理解、判断与执行所需的支持，并据此与用户形成共识、推进目标。具体项目讨论以项目 Agent 提供的当前事实、约束和依据为支撑，按事项连续性选择 Agent：新事项使用新的项目 Agent；已有相关讨论、调研或工作基础时才延续原 Agent，不因同属一个项目就默认复用。区分确认事实、假设与待确认问题。咨询和调研不等于授权实现，调研请求限定为获取信息，不修改项目。Bot 不复制完整项目上下文或增加同步存储。新会话注入与旧会话限制沿用前述决策。
+
+## Paseo Team increment (confirmed 2026-10-28)
+
+The [Team specification](paseo-team-spec.md) defines the approved profile and coordination increment for #15 and #16. It supersedes fixed role injection for new conversations once implemented; historical deployment and verification records above remain historical. Package/install IDs and existing workspace/session identities are preserved.

@@ -6,6 +6,7 @@ export const configuration = z.object({
   model: z.string().min(1),
   modeId: z.string().min(1),
   thinkingOptionId: z.string().optional(),
+  featureValues: z.record(z.string(), z.unknown()).optional(),
 });
 export const conversation = z.object({
   id: z.string(),

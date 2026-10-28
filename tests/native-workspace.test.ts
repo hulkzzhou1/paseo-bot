@@ -7,6 +7,144 @@ import { test } from "node:test";
 import { createIsolatedDaemon } from "./isolated-daemon.ts";
 import { createHostClient } from "@getpaseo/client/node";
 
+test("first entry copies an explicitly chosen source into one dedicated Coordinator preset without creating an Agent", {
+  timeout: 60000,
+}, async () => {
+  const daemon = await createIsolatedDaemon({ fixture: true });
+  try {
+    const source = {
+      id: "source",
+      name: "Source profile",
+      provider: "bot-test",
+      model: "test-model",
+      modeId: "approve",
+      thinkingOptionId: "brief",
+      featureValues: { style: "concise" },
+      notes: "Source usage notes, not Coordinator rules.",
+      privateExtension: "Do not copy unknown fields.",
+    };
+    await daemon.client.config.patch({ agentProfiles: [source] });
+    assert.deepEqual(await daemon.rpc("prepare-coordinator", {}), {
+      status: "choose-source",
+      sources: [
+        {
+          id: "source",
+          name: "Source profile",
+          provider: "bot-test",
+          model: "test-model",
+          modeId: "approve",
+        },
+      ],
+    });
+    await assert.rejects(
+      daemon.rpc("prepare-coordinator", { sourceProfileId: "missing" }),
+      /source.*preset/i,
+    );
+    await daemon.client.config.patch({
+      agentProfiles: [{ ...source, model: undefined }],
+    });
+    await assert.rejects(
+      daemon.rpc("prepare-coordinator", { sourceProfileId: "source" }),
+      /explicit provider and model/,
+    );
+    assert.equal(
+      (await daemon.client.config.get()).config.agentProfiles?.length,
+      1,
+    );
+    await daemon.client.config.patch({ agentProfiles: [source] });
+    const [first, second] = await Promise.all([
+      daemon.rpc("prepare-coordinator", { sourceProfileId: "source" }),
+      daemon.rpc("prepare-coordinator", { sourceProfileId: "source" }),
+    ]);
+    assert.deepEqual(first, second);
+    const ready = z
+      .object({
+        status: z.literal("ready"),
+        profile: z.object({ id: z.string(), name: z.string() }),
+      })
+      .parse(first);
+    assert.notEqual(ready.profile.id, source.id);
+    const profiles =
+      (await daemon.client.config.get()).config.agentProfiles ?? [];
+    assert.equal(profiles.length, 2);
+    assert.deepEqual(profiles[0], source);
+    const dedicated = profiles[1];
+    assert.equal(dedicated.id, ready.profile.id);
+    assert.equal(dedicated.provider, "bot-test");
+    assert.equal(dedicated.model, "test-model");
+    assert.equal(dedicated.modeId, "approve");
+    assert.equal(dedicated.thinkingOptionId, "brief");
+    assert.deepEqual(dedicated.featureValues, { style: "concise" });
+    assert.equal(dedicated.privateExtension, undefined);
+    assert.match(dedicated.notes ?? "", /Coordinator|Paseo Bot/);
+    assert.notEqual(dedicated.notes, source.notes);
+    assert.deepEqual(await daemon.rpc("prepare-coordinator", {}), ready);
+    await daemon.client.config.patch({
+      agentProfiles: profiles.map((profile) =>
+        profile.id === source.id
+          ? { ...profile, model: "second-model" }
+          : profile,
+      ),
+    });
+    await daemon.rpc("prepare-coordinator", { sourceProfileId: source.id });
+    const independent = (
+      await daemon.client.config.get()
+    ).config.agentProfiles?.find((profile) => profile.id === dedicated.id);
+    assert.equal(independent?.model, "test-model");
+    assert.equal((await daemon.client.agents.list()).entries.length, 0);
+    assert.equal((await daemon.rpc("bootstrap", {})).workspaceId, null);
+  } finally {
+    await daemon.close();
+  }
+});
+
+test("a Coordinator provider or permission conflict fails before creating or sending an Agent", {
+  timeout: 60000,
+}, async () => {
+  const daemon = await createIsolatedDaemon({ fixture: true });
+  try {
+    await daemon.client.config.patch({
+      agentProfiles: [
+        {
+          id: "source",
+          name: "Source",
+          provider: "bot-test",
+          model: "test-model",
+          modeId: "approve",
+          thinkingOptionId: "brief",
+        },
+      ],
+    });
+    await daemon.rpc("prepare-coordinator", { sourceProfileId: "source" });
+    const { workspaceId } = z
+      .object({ workspaceId: z.string() })
+      .parse(await daemon.rpc("open-workspace", {}));
+    for (const config of [
+      { provider: "bot-test/test-model", modeId: "bypass" },
+      { provider: "bot-other/test-model", modeId: "approve" },
+    ])
+      await assert.rejects(
+        daemon.client.workspaces.ref(workspaceId).agents.create({
+          config,
+          prompt: "This must not be sent.",
+        }),
+        /Coordinator preset|permission mode/,
+      );
+    await assert.rejects(
+      daemon.rpc("create-conversation", {
+        requestId: randomUUID(),
+        text: "This must not be sent.",
+        config: { provider: "bot-test", model: "test-model", modeId: "bypass" },
+      }),
+      /Coordinator preset|permission mode/,
+    );
+    assert.equal((await daemon.client.agents.list()).entries.length, 0);
+    assert.equal((await daemon.rpc("bootstrap", {})).conversations.length, 0);
+  } finally {
+    await daemon.close();
+  }
+});
+
 test("opening native Bot workspace is concurrent-safe and creates no Agent", {
   timeout: 60000,
 }, async () => {
@@ -91,47 +229,97 @@ test("native root conversations join Bot history without adopting delegated or o
   }
 });
 
-test("native creation retains system choices and receives Bot guidance without enabling tools", {
+test("native and legacy creation use the dedicated preset settings and exactly one copy of its notes", {
   timeout: 60000,
 }, async () => {
   const daemon = await createIsolatedDaemon({ fixture: true });
   try {
+    await daemon.client.config.patch({
+      agentProfiles: [
+        {
+          id: "source",
+          name: "Source",
+          provider: "bot-test",
+          model: "second-model",
+          modeId: "approve",
+          thinkingOptionId: "deep",
+          featureValues: { style: "concise" },
+        },
+      ],
+    });
+    const { profile } = z
+      .object({ profile: z.object({ id: z.string() }) })
+      .parse(
+        await daemon.rpc("prepare-coordinator", { sourceProfileId: "source" }),
+      );
+    const profiles =
+      (await daemon.client.config.get()).config.agentProfiles ?? [];
+    await daemon.client.config.patch({
+      agentProfiles: profiles.map((p) =>
+        p.id === profile.id
+          ? { ...p, notes: "Use verified project evidence. Coordinator rules." }
+          : p,
+      ),
+    });
     const { workspaceId } = z
       .object({ workspaceId: z.string() })
       .parse(await daemon.rpc("open-workspace", {}));
-    const agent = await daemon.client.workspaces
+    const native = await daemon.client.workspaces
       .ref(workspaceId)
       .agents.create({
         config: {
           provider: "bot-test/test-model",
           modeId: "approve",
           thinkingOptionId: "brief",
-          systemPrompt: "Keep the user's profile instructions.",
+          featureValues: { style: "verbose", preserve: true },
+          systemPrompt:
+            "Keep the user's profile instructions.\n\nUse verified project evidence. Coordinator rules.",
         },
         prompt: "inspect-bot-config",
       });
-    await agent.waitForFinish(10000);
-    const page = await agent.timeline.refetch();
-    const message = page.entries.find(
-      (entry) => entry.item.type === "assistant_message",
-    );
-    assert.ok(message?.item.type === "assistant_message");
-    const actual = JSON.parse(message.item.text);
-    assert.match(actual.systemPrompt, /Paseo Bot/);
-    assert.match(actual.systemPrompt, /user.s goals/i);
-    assert.match(actual.systemPrompt, /project Agents own.*execution/i);
-    assert.match(actual.systemPrompt, /after delegation/i);
-    assert.match(actual.systemPrompt, /applicable specialist.*dispatch/i);
-    assert.match(actual.systemPrompt, /project-specific discussion.*findings/i);
-    assert.match(actual.systemPrompt, /new matter.*fresh project Agent/i);
-    assert.match(
-      actual.systemPrompt,
-      /Consultation does not authorize project changes/i,
-    );
-    assert.match(actual.systemPrompt, /Keep the user's profile instructions/);
-    assert.equal(actual.mode, "approve");
-    assert.equal(actual.preapproved, 0);
-    assert.deepEqual(actual.mcpServers, []);
+    const legacy = await daemon.rpc("create-conversation", {
+      requestId: randomUUID(),
+      text: "inspect-bot-config",
+      config: {
+        provider: "bot-test",
+        model: "test-model",
+        modeId: "approve",
+        thinkingOptionId: "brief",
+      },
+    });
+    for (const id of [native.id, legacy.id]) {
+      const agent = daemon.client.agents.ref(id);
+      await agent.waitForFinish(10000);
+      const page = await agent.timeline.refetch();
+      const message = page.entries.find(
+        ({ item }) => item.type === "assistant_message",
+      );
+      assert.ok(message?.item.type === "assistant_message");
+      const actual = JSON.parse(message.item.text);
+      assert.equal(
+        actual.systemPrompt.split("Coordinator rules.").length - 1,
+        1,
+      );
+      assert.doesNotMatch(
+        actual.systemPrompt,
+        /You are Paseo Bot|你是 Paseo Bot/,
+      );
+      if (id === native.id)
+        assert.match(
+          actual.systemPrompt,
+          /Keep the user's profile instructions/,
+        );
+      assert.equal(actual.model, "second-model");
+      assert.equal(actual.thinkingOption, "deep");
+      assert.equal(actual.settings.style, "concise");
+      if (id === native.id) assert.equal(actual.settings.preserve, true);
+      assert.equal(actual.mode, "approve");
+      assert.equal(actual.preapproved, 0);
+      assert.deepEqual(actual.mcpServers, []);
+      const saved = (await agent.refresh())?.agent;
+      assert.equal(saved?.model, "second-model");
+    }
+    assert.equal(legacy.config.model, "second-model");
   } finally {
     await daemon.close();
   }
